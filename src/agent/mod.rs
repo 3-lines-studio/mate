@@ -79,7 +79,6 @@ pub struct AgentSession {
     tools: Arc<Registry>,
     client: Arc<dyn ChatClient>,
     system_msg: String,
-    max_rounds: i32,
     cwd: String,
     api_session_id: String,
 
@@ -132,7 +131,6 @@ impl AgentSession {
         client: Arc<dyn ChatClient>,
         registry: Arc<Registry>,
         system_prompt: String,
-        max_rounds: i32,
         cwd: String,
     ) -> Self {
         let now = chrono::Local::now();
@@ -149,7 +147,6 @@ impl AgentSession {
             tools: registry,
             client,
             system_msg,
-            max_rounds,
             cwd,
             api_session_id,
             cached_tool_defs,
@@ -173,7 +170,6 @@ impl AgentSession {
         store: Arc<TokioMutex<Store>>,
         sess_id: String,
         def: &SubagentDef,
-        max_rounds: i32,
         cwd: String,
         tool_call_id: &str,
     ) -> Self {
@@ -201,7 +197,6 @@ impl AgentSession {
             tools: def.registry.clone(),
             client: def.client.clone(),
             system_msg,
-            max_rounds,
             cwd,
             api_session_id,
             cached_tool_defs: def.registry.tool_defs(),

@@ -304,7 +304,6 @@ fn default_cmd(args: &[String]) {
     }
 
     deps.agent_name = "mate".to_string();
-    deps.max_rounds = deps.config.agent.max_tool_rounds;
 
     if !local {
         let interface_names = if deps.config.agent.interfaces.is_empty() {

@@ -26,7 +26,6 @@ struct JobCtx {
     compaction_client: Option<Client>,
     registry: Arc<Registry>,
     system_prompt: String,
-    max_rounds: i32,
     cwd: String,
     subagents: HashMap<String, SubagentDef>,
     models: Vec<ModelConfig>,
@@ -49,7 +48,6 @@ pub fn start_scheduler(deps: &Deps, notifier: Arc<dyn Notifier + Send + Sync>) {
     let compaction_client = deps.compaction_client.clone();
     let registry = deps.registry.clone();
     let system_prompt = deps.system_prompt.clone();
-    let max_rounds = deps.max_rounds;
     let cwd = deps.cwd.clone();
     let subagents = deps.subagents.clone();
     let models = deps.config.models.clone();
@@ -80,7 +78,6 @@ pub fn start_scheduler(deps: &Deps, notifier: Arc<dyn Notifier + Send + Sync>) {
                     compaction_client: compaction_client.clone(),
                     registry: registry.clone(),
                     system_prompt: system_prompt.clone(),
-                    max_rounds,
                     cwd: cwd.clone(),
                     subagents: subagents.clone(),
                     models: models.clone(),
@@ -182,7 +179,6 @@ async fn run_job(ctx: &JobCtx) -> Result<String, String> {
         Arc::new(client),
         ctx.registry.clone(),
         ctx.system_prompt.clone(),
-        ctx.max_rounds,
         ctx.cwd.clone(),
     );
     asession.set_subagents(ctx.subagents.clone());

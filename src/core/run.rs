@@ -47,7 +47,6 @@ pub fn run_definition(
     }
 
     deps.agent_name = agent_name.to_string();
-    deps.max_rounds = deps.config.agent.max_tool_rounds;
 
     let tools = extra_tools(&deps.config, &deps.config_dir);
     if let Some(reg) = Arc::get_mut(&mut deps.registry) {

@@ -56,7 +56,9 @@ impl super::AgentSession {
             }
         };
 
-        for round in 1..=self.max_rounds {
+        let mut round = 0u64;
+        loop {
+            round += 1;
             let req = self.build_request(&ancestry_msgs);
             let t0 = std::time::Instant::now();
 
@@ -135,9 +137,6 @@ impl super::AgentSession {
                 }
             }
         }
-
-        self.commit_turn(&parent_id).await;
-        let _ = events.send(Event::agent_done("max_rounds")).await;
     }
 
     fn build_request(&self, ancestry_msgs: &[Message]) -> ChatRequest {

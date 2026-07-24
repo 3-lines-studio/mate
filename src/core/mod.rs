@@ -23,7 +23,6 @@ pub struct Deps {
     pub compaction_client: Option<Client>,
     pub registry: Arc<Registry>,
     pub system_prompt: String,
-    pub max_rounds: i32,
     pub cwd: String,
     pub store: Store,
     pub subagents: HashMap<String, SubagentDef>,

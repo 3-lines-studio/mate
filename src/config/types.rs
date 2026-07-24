@@ -38,8 +38,6 @@ pub struct ModelConfig {
 pub struct AgentConfig {
     #[serde(default)]
     pub model: String,
-    #[serde(default = "default_max_tool_rounds")]
-    pub max_tool_rounds: i32,
     #[serde(default = "default_all_tools")]
     pub tools: Vec<String>,
     #[serde(default)]
@@ -54,17 +52,12 @@ impl Default for AgentConfig {
     fn default() -> Self {
         Self {
             model: String::new(),
-            max_tool_rounds: default_max_tool_rounds(),
             tools: default_all_tools(),
             interfaces: vec![],
             prompt: String::new(),
             compaction_model: String::new(),
         }
     }
-}
-
-fn default_max_tool_rounds() -> i32 {
-    99
 }
 
 fn default_all_tools() -> Vec<String> {

@@ -104,7 +104,6 @@ fn dummy_agent() -> AgentSession {
         client,
         registry,
         "sys".to_string(),
-        5,
         "/tmp".to_string(),
     )
 }
@@ -195,7 +194,6 @@ async fn test_delegate_end_to_end() {
         parent_client,
         registry,
         "sys".to_string(),
-        5,
         "/tmp".to_string(),
     );
     agent.set_subagents(HashMap::from([("coder".to_string(), sub_def)]));
@@ -284,7 +282,6 @@ async fn test_delegate_subagent_with_tool_round() {
         parent_client,
         registry,
         "sys".to_string(),
-        5,
         "/tmp".to_string(),
     );
     agent.set_subagents(HashMap::from([("coder".to_string(), sub_def)]));
@@ -351,7 +348,6 @@ async fn test_commits_partial_turn_after_each_tool_round() {
         client,
         Arc::new(registry),
         "sys".to_string(),
-        5,
         "/tmp".to_string(),
     );
 
@@ -444,7 +440,6 @@ async fn test_partial_turn_survives_error_for_continue() {
         client,
         Arc::new(registry),
         "sys".to_string(),
-        5,
         "/tmp".to_string(),
     );
 
@@ -488,7 +483,6 @@ async fn test_partial_turn_survives_error_for_continue() {
         cont_client,
         Arc::new(registry),
         "sys".to_string(),
-        5,
         "/tmp".to_string(),
     );
 

@@ -103,15 +103,13 @@ impl super::AgentSession {
         let subagents = self.subagents_state.subagents.clone();
         let store = self.store.clone();
         let sess_id = self.sess.id.clone();
-        let max_rounds = self.max_rounds;
         let cwd = self.cwd.clone();
 
         set.spawn(async move {
             let start = std::time::Instant::now();
             let tc_clone = tc.clone();
             let events_clone = events.clone();
-            let (result, dd) =
-                run_delegate(tc, subagents, store, sess_id, max_rounds, cwd, events).await;
+            let (result, dd) = run_delegate(tc, subagents, store, sess_id, cwd, events).await;
             let dur = format_duration(start.elapsed());
             let _ = events_clone
                 .send(Event::tool_result_ev(&tc_clone, &result, &dur))
@@ -222,7 +220,6 @@ fn run_delegate(
     subagents: HashMap<String, SubagentDef>,
     store: Arc<TokioMutex<Store>>,
     sess_id: String,
-    max_rounds: i32,
     cwd: String,
     parent_events: mpsc::Sender<Event>,
 ) -> std::pin::Pin<Box<dyn std::future::Future<Output = (String, DelegateData)> + Send>> {
@@ -275,8 +272,7 @@ fn run_delegate(
             task_text.push_str(&params.context);
         }
 
-        let mut sub =
-            super::AgentSession::new_subagent(store, sess_id, &def, max_rounds, cwd, &tc.id);
+        let mut sub = super::AgentSession::new_subagent(store, sess_id, &def, cwd, &tc.id);
 
         let (event_tx, mut event_rx) = mpsc::channel(100);
         let sub_id = def.id.clone();

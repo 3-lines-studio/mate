@@ -81,7 +81,6 @@ pub fn init_with_config(
     };
 
     let subagents = resolve_subagents(&cfg, "", "", "", verbose);
-    let max_rounds = cfg.agent.max_tool_rounds;
 
     Ok(Deps {
         config: cfg,
@@ -90,7 +89,6 @@ pub fn init_with_config(
         model_name,
         registry: Arc::new(registry),
         system_prompt: sp,
-        max_rounds,
         cwd: cwd.to_string(),
         store,
         subagents,
@@ -152,7 +150,6 @@ pub fn init(
     let mut deps = init_with_config(cfg, system_prompt, &cwd, &session_dir, verbose)?;
 
     deps.config_dir = cfg_dir.clone();
-    deps.max_rounds = deps.config.agent.max_tool_rounds;
 
     deps.templates = load_templates(&cfg_dir);
     deps.subagents = resolve_subagents(&deps.config, &system_md, &global_md, &local_md, verbose);

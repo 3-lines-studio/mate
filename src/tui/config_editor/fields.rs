@@ -11,7 +11,6 @@ pub(super) const SECTION_NAMES: &[&str] = &[
 
 const AGENT_FIELDS: &[(&str, FieldKind)] = &[
     ("model", FieldKind::PickModels),
-    ("max_tool_rounds", FieldKind::I32),
     ("tools", FieldKind::Comma),
     ("interfaces", FieldKind::Comma),
     ("compaction_model", FieldKind::PickModels),
@@ -114,7 +113,6 @@ impl super::ConfigScreen {
     pub(super) fn get_agent_field(&self, name: &str) -> String {
         match name {
             "model" => self.config.agent.model.clone(),
-            "max_tool_rounds" => self.config.agent.max_tool_rounds.to_string(),
             "tools" => self.config.agent.tools.join(", "),
             "interfaces" => self.config.agent.interfaces.join(", "),
             "compaction_model" => self.config.agent.compaction_model.clone(),
@@ -125,11 +123,6 @@ impl super::ConfigScreen {
     pub(super) fn set_agent_field(&mut self, name: &str, value: &str) -> Result<(), String> {
         match name {
             "model" => self.config.agent.model = value.to_string(),
-            "max_tool_rounds" => {
-                self.config.agent.max_tool_rounds = value
-                    .parse::<i32>()
-                    .map_err(|_| format!("invalid i32: {}", value))?
-            }
             "tools" => self.config.agent.tools = parse_comma(value),
             "interfaces" => self.config.agent.interfaces = parse_comma(value),
             "compaction_model" => self.config.agent.compaction_model = value.to_string(),

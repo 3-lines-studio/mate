@@ -844,7 +844,6 @@ mod tests {
             compaction_client: None,
             registry: Arc::new(Registry::standard()),
             system_prompt: String::new(),
-            max_rounds: 0,
             cwd: path.clone(),
             store: Store::new(&path).unwrap(),
             subagents: HashMap::new(),

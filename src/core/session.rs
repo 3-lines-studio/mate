@@ -14,7 +14,6 @@ struct SessionParts {
     store: Store,
     registry: Arc<Registry>,
     system_prompt: String,
-    max_rounds: i32,
     cwd: String,
     subagents: HashMap<String, SubagentDef>,
     compaction_client: Option<Client>,
@@ -26,7 +25,6 @@ impl Deps {
             store: self.store.clone(),
             registry: self.registry.clone(),
             system_prompt: self.system_prompt.clone(),
-            max_rounds: self.max_rounds,
             cwd: self.cwd.clone(),
             subagents: self.subagents.clone(),
             compaction_client: self.compaction_client.clone(),
@@ -49,7 +47,6 @@ impl Deps {
             Arc::new(client.clone()),
             parts.registry.clone(),
             parts.system_prompt.clone(),
-            parts.max_rounds,
             parts.cwd.clone(),
         );
         asession.set_subagents(parts.subagents.clone());
