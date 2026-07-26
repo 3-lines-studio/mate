@@ -1,4 +1,3 @@
-mod compaction;
 mod format;
 mod loop_;
 #[cfg(test)]
@@ -61,13 +60,10 @@ use tokio::sync::Mutex as TokioMutex;
 use tokio::sync::mpsc;
 
 const TOOL_TIMEOUT_SECS: u64 = 120;
-const COMPACTION_THRESHOLD_NUM: i32 = 7;
-const COMPACTION_THRESHOLD_DEN: i32 = 10;
-const COMPACTION_BUDGET_DIVISOR: i32 = 3;
 
 fn tool_rules_prompt() -> String {
     format!(
-        "CRITICAL TOOL RULES:\n- Use tools directly — never describe what you'd do, execute it.\n- Do not fabricate results.\n- Non-delegate tool calls timeout after {} seconds.\n- Prefer `symbols` over grep for symbol lookups in Rust, Go, TS/TSX/JSX, CSS. Use grep to find occurrences/references.",
+        "CRITICAL TOOL RULES:\n- Use tools directly — never describe what you'd do, execute it.\n- Do not fabricate results.\n- Non-delegate tool calls timeout after {} seconds.\n- Search, find files, and run commands via `bash` (e.g. rg, find, git grep).",
         TOOL_TIMEOUT_SECS
     )
 }
@@ -85,8 +81,6 @@ pub struct AgentSession {
     cached_tool_defs: Vec<ToolDef>,
 
     working_messages: Vec<Message>,
-
-    compaction: types::CompactionState,
 
     subagents_state: types::SubagentState,
 
@@ -137,8 +131,6 @@ impl AgentSession {
         let date_str = now.format("%Y-%m-%d").to_string();
         let system_msg = format!("CWD: {}\nDate: {}\n\n{}", cwd, date_str, system_prompt);
         let cached_tool_defs = registry.tool_defs();
-        let compacted_summary = sess.compacted_summary.clone();
-        let compacted_up_to = sess.compacted_up_to.clone();
         let api_session_id = sess.id.clone();
 
         AgentSession {
@@ -151,11 +143,6 @@ impl AgentSession {
             api_session_id,
             cached_tool_defs,
             working_messages: Vec::new(),
-            compaction: types::CompactionState {
-                compaction_client: None,
-                compacted_summary,
-                compacted_up_to,
-            },
             subagents_state: types::SubagentState {
                 subagents: HashMap::new(),
                 subagent_turns: Vec::new(),
@@ -173,7 +160,11 @@ impl AgentSession {
         cwd: String,
         tool_call_id: &str,
     ) -> Self {
-        let system_msg = format!("CWD: {}\n\n{}", cwd, def.system_prompt);
+        let date_str = chrono::Local::now().format("%Y-%m-%d").to_string();
+        let system_msg = format!(
+            "CWD: {}\nDate: {}\n\n{}\n\nYour final message is the parent's full tool result.",
+            cwd, date_str, def.system_prompt,
+        );
         let api_session_id = format!("{}:sub:{}:{}", sess_id, def.id, tool_call_id);
         AgentSession {
             store,
@@ -191,8 +182,6 @@ impl AgentSession {
                 total_tokens: 0,
                 context_tokens: 0,
                 cost: 0.0,
-                compacted_summary: String::new(),
-                compacted_up_to: String::new(),
             },
             tools: def.registry.clone(),
             client: def.client.clone(),
@@ -201,11 +190,6 @@ impl AgentSession {
             api_session_id,
             cached_tool_defs: def.registry.tool_defs(),
             working_messages: Vec::new(),
-            compaction: types::CompactionState {
-                compaction_client: None,
-                compacted_summary: String::new(),
-                compacted_up_to: String::new(),
-            },
             subagents_state: types::SubagentState {
                 subagents: HashMap::new(),
                 subagent_turns: Vec::new(),
@@ -220,8 +204,6 @@ impl AgentSession {
         self.sess.clone()
     }
     pub fn reload_from(&mut self, sess: Session) {
-        self.compaction.compacted_summary = sess.compacted_summary.clone();
-        self.compaction.compacted_up_to = sess.compacted_up_to.clone();
         self.sess = sess;
     }
     pub fn system_prompt(&self) -> &str {
@@ -238,22 +220,23 @@ impl AgentSession {
     }
 
     pub fn set_subagents(&mut self, defs: HashMap<String, SubagentDef>) {
+        self.cached_tool_defs = self.tools.tool_defs();
         if defs.is_empty() {
+            self.subagents_state.subagents.clear();
             return;
         }
-        let mut names: Vec<String> = defs.keys().cloned().collect();
-        names.sort();
-        let descriptions: HashMap<String, String> = defs
+        let mut roles: Vec<tools::DelegateRole> = defs
             .iter()
-            .map(|(k, v)| (k.clone(), v.description.clone()))
+            .map(|(id, def)| tools::DelegateRole {
+                id: id.clone(),
+                description: def.description.clone(),
+                tools: def.registry.names(),
+            })
             .collect();
+        roles.sort_by(|a, b| a.id.cmp(&b.id));
         self.subagents_state.subagents = defs;
         self.cached_tool_defs
-            .push(tools::build_delegate_def(&names, &descriptions));
-    }
-
-    pub fn set_compaction_client(&mut self, client: Arc<dyn ChatClient>) {
-        self.compaction.compaction_client = Some(client);
+            .push(tools::build_delegate_def(&roles));
     }
 
     pub fn set_client(&mut self, client: Arc<dyn ChatClient>) {
@@ -287,39 +270,6 @@ impl AgentSession {
         let ut = s.last_prompt.clone();
         tokio::spawn(async move {
             s.run_loop(&ut, &tx).await;
-        });
-        Ok(rx)
-    }
-
-    pub fn compact(&self) -> Result<mpsc::Receiver<Event>, String> {
-        if self.compaction.compaction_client.is_none() {
-            return Err("no compaction client configured".into());
-        }
-        let (tx, rx) = mpsc::channel(100);
-        let mut s = self.clone();
-        tokio::spawn(async move {
-            let _ = tx
-                .send(Event {
-                    kind: EventKind::CompactingStart,
-                    subagent: String::new(),
-                    subagent_id: String::new(),
-                })
-                .await;
-            let turns = {
-                let mut store = s.store.lock().await;
-                store
-                    .ancestry(&s.sess.id, &s.sess.current_turn)
-                    .map_err(|e| e.to_string())
-            };
-            match turns {
-                Ok(turns) => {
-                    let _ = s.compact_ancestry(&turns, true).await;
-                    let _ = tx.send(Event::agent_done("compacted")).await;
-                }
-                Err(e) => {
-                    let _ = tx.send(Event::error_msg(&e)).await;
-                }
-            }
         });
         Ok(rx)
     }

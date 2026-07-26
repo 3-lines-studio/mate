@@ -13,7 +13,6 @@ const AGENT_FIELDS: &[(&str, FieldKind)] = &[
     ("model", FieldKind::PickModels),
     ("tools", FieldKind::Comma),
     ("interfaces", FieldKind::Comma),
-    ("compaction_model", FieldKind::PickModels),
 ];
 
 const TUI_FIELDS: &[(&str, FieldKind)] = &[
@@ -115,7 +114,6 @@ impl super::ConfigScreen {
             "model" => self.config.agent.model.clone(),
             "tools" => self.config.agent.tools.join(", "),
             "interfaces" => self.config.agent.interfaces.join(", "),
-            "compaction_model" => self.config.agent.compaction_model.clone(),
             _ => String::new(),
         }
     }
@@ -125,7 +123,6 @@ impl super::ConfigScreen {
             "model" => self.config.agent.model = value.to_string(),
             "tools" => self.config.agent.tools = parse_comma(value),
             "interfaces" => self.config.agent.interfaces = parse_comma(value),
-            "compaction_model" => self.config.agent.compaction_model = value.to_string(),
             _ => {}
         }
         Ok(())

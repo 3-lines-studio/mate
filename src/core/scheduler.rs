@@ -23,7 +23,6 @@ struct JobCtx {
     job: ScheduledJob,
     store: crate::session::store::Store,
     default_client: Client,
-    compaction_client: Option<Client>,
     registry: Arc<Registry>,
     system_prompt: String,
     cwd: String,
@@ -45,7 +44,6 @@ pub fn start_scheduler(deps: &Deps, notifier: Arc<dyn Notifier + Send + Sync>) {
     let jobs = deps.config.schedule.jobs.clone();
     let store = deps.store.clone();
     let default_client = deps.client.clone();
-    let compaction_client = deps.compaction_client.clone();
     let registry = deps.registry.clone();
     let system_prompt = deps.system_prompt.clone();
     let cwd = deps.cwd.clone();
@@ -75,7 +73,6 @@ pub fn start_scheduler(deps: &Deps, notifier: Arc<dyn Notifier + Send + Sync>) {
                     job,
                     store: store.clone(),
                     default_client: default_client.clone(),
-                    compaction_client: compaction_client.clone(),
                     registry: registry.clone(),
                     system_prompt: system_prompt.clone(),
                     cwd: cwd.clone(),
@@ -182,9 +179,6 @@ async fn run_job(ctx: &JobCtx) -> Result<String, String> {
         ctx.cwd.clone(),
     );
     asession.set_subagents(ctx.subagents.clone());
-    if let Some(cc) = &ctx.compaction_client {
-        asession.set_compaction_client(Arc::new(cc.clone()));
-    }
 
     let mut events = asession.prompt(&ctx.job.prompt);
     let mut sb = String::new();

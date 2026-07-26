@@ -67,38 +67,6 @@ fn format_tool_label_raw(cwd: &str, name: &str, args: &str) -> String {
                 }
             }
         }
-        "grep" => {
-            if let Ok(p) = serde_json::from_str::<serde_json::Value>(args) {
-                let pattern = p["pattern"].as_str().unwrap_or("");
-                if !pattern.is_empty() {
-                    let mut label = format!("grep \"{}\"", pattern);
-                    let path = p["path"].as_str().unwrap_or("");
-                    if !path.is_empty() && path != "." {
-                        label.push(' ');
-                        label.push_str(&rel_path(cwd, path));
-                    }
-                    let glob = p["glob"].as_str().unwrap_or("");
-                    if !glob.is_empty() {
-                        label.push_str(&format!(" -g {}", glob));
-                    }
-                    return label;
-                }
-            }
-        }
-        "glob" => {
-            if let Ok(p) = serde_json::from_str::<serde_json::Value>(args) {
-                let pattern = p["pattern"].as_str().unwrap_or("");
-                if !pattern.is_empty() {
-                    let mut label = format!("glob \"{}\"", pattern);
-                    let path = p["path"].as_str().unwrap_or("");
-                    if !path.is_empty() && path != "." {
-                        label.push(' ');
-                        label.push_str(&rel_path(cwd, path));
-                    }
-                    return label;
-                }
-            }
-        }
         "delegate" => {
             if let Ok(p) = serde_json::from_str::<serde_json::Value>(args) {
                 let subagent = p["subagent"].as_str().unwrap_or("");
@@ -179,46 +147,6 @@ mod tests {
             r#"{"path":"/home/user/project/src/main.rs","offset":10,"limit":5}"#,
         );
         assert_eq!(label, "read src/main.rs L10-14");
-    }
-
-    #[test]
-    fn test_format_tool_label_grep() {
-        let label = format_tool_label(
-            "/home/user/project",
-            "grep",
-            r#"{"pattern":"foo","path":"/home/user/project/src"}"#,
-        );
-        assert_eq!(label, "grep \"foo\" src");
-    }
-
-    #[test]
-    fn test_format_tool_label_grep_glob() {
-        let label = format_tool_label(
-            "/home/user/project",
-            "grep",
-            r#"{"pattern":"foo","path":".","glob":"*_test.go"}"#,
-        );
-        assert_eq!(label, "grep \"foo\" -g *_test.go");
-    }
-
-    #[test]
-    fn test_format_tool_label_glob() {
-        let label = format_tool_label(
-            "/home/user/project",
-            "glob",
-            r#"{"pattern":"**/*.rs","path":"/home/user/project/src"}"#,
-        );
-        assert_eq!(label, "glob \"**/*.rs\" src");
-    }
-
-    #[test]
-    fn test_format_tool_label_glob_default_path() {
-        let label = format_tool_label(
-            "/home/user/project",
-            "glob",
-            r#"{"pattern":"*.go","path":"."}"#,
-        );
-        assert_eq!(label, "glob \"*.go\"");
     }
 
     #[test]

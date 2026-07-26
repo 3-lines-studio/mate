@@ -62,10 +62,6 @@ pub struct Session {
     #[serde(rename = "contextTokens")]
     pub context_tokens: i32,
     pub cost: f64,
-    #[serde(rename = "compactedSummary")]
-    pub compacted_summary: String,
-    #[serde(rename = "compactedUpTo")]
-    pub compacted_up_to: String,
 }
 
 pub fn compute_turn_id(parent_id: &str, messages: &[Message]) -> String {

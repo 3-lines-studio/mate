@@ -16,7 +16,6 @@ struct SessionParts {
     system_prompt: String,
     cwd: String,
     subagents: HashMap<String, SubagentDef>,
-    compaction_client: Option<Client>,
 }
 
 impl Deps {
@@ -27,7 +26,6 @@ impl Deps {
             system_prompt: self.system_prompt.clone(),
             cwd: self.cwd.clone(),
             subagents: self.subagents.clone(),
-            compaction_client: self.compaction_client.clone(),
         }
     }
 
@@ -50,9 +48,6 @@ impl Deps {
             parts.cwd.clone(),
         );
         asession.set_subagents(parts.subagents.clone());
-        if let Some(cc) = &parts.compaction_client {
-            asession.set_compaction_client(Arc::new(cc.clone()));
-        }
         asession
     }
 

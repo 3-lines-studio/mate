@@ -78,8 +78,6 @@ fn dummy_session() -> Session {
         total_tokens: 0,
         context_tokens: 0,
         cost: 0.0,
-        compacted_summary: String::new(),
-        compacted_up_to: String::new(),
     }
 }
 
@@ -118,8 +116,6 @@ fn test_reload_from_syncs_session_and_accumulators() {
     fresh.completion_tokens = 80;
     fresh.context_tokens = 200;
     fresh.cost = 1.5;
-    fresh.compacted_summary = "sum".to_string();
-    fresh.compacted_up_to = "t0".to_string();
 
     agent.reload_from(fresh);
 
@@ -129,8 +125,6 @@ fn test_reload_from_syncs_session_and_accumulators() {
     assert_eq!(sess.completion_tokens, 80);
     assert_eq!(sess.context_tokens, 200);
     assert_eq!(sess.cost, 1.5);
-    assert_eq!(sess.compacted_summary, "sum");
-    assert_eq!(sess.compacted_up_to, "t0");
 }
 
 fn dummy_tool(name: &str, result: &str) -> crate::tools::Tool {
@@ -309,6 +303,489 @@ async fn test_delegate_subagent_with_tool_round() {
         "delegate result was: {:?}",
         delegate_result
     );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_delegate_invalid_params_is_error() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let store = Arc::new(TokioMutex::new(
+        Store::new(&dir.path().to_string_lossy()).unwrap(),
+    ));
+
+    let parent_responses = vec![
+        vec![
+            se_tool(StreamToolCall {
+                id: "call1".into(),
+                name: "delegate".into(),
+                arguments: r#"{"subagent":"coder"}"#.into(),
+            }),
+            se_finish("tool_calls"),
+        ],
+        vec![se("text_delta", "parent-done"), se_finish("stop")],
+    ];
+    let parent_client = MockClient::new(parent_responses);
+
+    let sub_def = SubagentDef {
+        id: "coder".to_string(),
+        description: "coder".to_string(),
+        client: MockClient::new(vec![]),
+        registry: Arc::new(Registry::new()),
+        system_prompt: "sub".to_string(),
+        model_name: "mock".to_string(),
+    };
+
+    let mut agent = AgentSession::new(
+        store,
+        dummy_session(),
+        parent_client,
+        Arc::new(Registry::new()),
+        "sys".to_string(),
+        "/tmp".to_string(),
+    );
+    agent.set_subagents(HashMap::from([("coder".to_string(), sub_def)]));
+
+    let mut rx = agent.prompt("please delegate");
+    let mut saw_error = false;
+    let mut err_text = String::new();
+    while let Some(ev) = rx.recv().await {
+        if let EventKind::ToolError { name, error, .. } = &ev.kind
+            && name == "delegate"
+        {
+            saw_error = true;
+            err_text = error.clone();
+        }
+        if matches!(&ev.kind, EventKind::AgentDone(_)) {
+            break;
+        }
+    }
+    assert!(saw_error, "expected ToolError for bad args");
+    assert!(
+        err_text.contains("invalid delegate params"),
+        "err was: {:?}",
+        err_text
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_delegate_unknown_subagent_is_error() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let store = Arc::new(TokioMutex::new(
+        Store::new(&dir.path().to_string_lossy()).unwrap(),
+    ));
+
+    let args = serde_json::json!({
+        "subagent": "nope", "task": "x"
+    })
+    .to_string();
+    let parent_responses = vec![
+        vec![
+            se_tool(StreamToolCall {
+                id: "call1".into(),
+                name: "delegate".into(),
+                arguments: args,
+            }),
+            se_finish("tool_calls"),
+        ],
+        vec![se("text_delta", "parent-done"), se_finish("stop")],
+    ];
+    let parent_client = MockClient::new(parent_responses);
+
+    let sub_def = SubagentDef {
+        id: "coder".to_string(),
+        description: "coder".to_string(),
+        client: MockClient::new(vec![]),
+        registry: Arc::new(Registry::new()),
+        system_prompt: "sub".to_string(),
+        model_name: "mock".to_string(),
+    };
+
+    let mut agent = AgentSession::new(
+        store,
+        dummy_session(),
+        parent_client,
+        Arc::new(Registry::new()),
+        "sys".to_string(),
+        "/tmp".to_string(),
+    );
+    agent.set_subagents(HashMap::from([("coder".to_string(), sub_def)]));
+
+    let mut rx = agent.prompt("please delegate");
+    let mut saw_error = false;
+    let mut err_text = String::new();
+    while let Some(ev) = rx.recv().await {
+        if let EventKind::ToolError { name, error, .. } = &ev.kind
+            && name == "delegate"
+        {
+            saw_error = true;
+            err_text = error.clone();
+        }
+        if matches!(&ev.kind, EventKind::AgentDone(_)) {
+            break;
+        }
+    }
+    assert!(saw_error, "expected ToolError for unknown subagent");
+    assert!(err_text.contains("not found"), "err was: {:?}", err_text);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_delegate_no_final_message_lists_tools() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let store = Arc::new(TokioMutex::new(
+        Store::new(&dir.path().to_string_lossy()).unwrap(),
+    ));
+
+    let delegate_args = serde_json::json!({
+        "subagent": "coder", "task": "just tool"
+    })
+    .to_string();
+    let parent_responses = vec![
+        vec![
+            se_tool(StreamToolCall {
+                id: "call1".into(),
+                name: "delegate".into(),
+                arguments: delegate_args,
+            }),
+            se_finish("tool_calls"),
+        ],
+        vec![se("text_delta", "parent-done"), se_finish("stop")],
+    ];
+    let parent_client = MockClient::new(parent_responses);
+
+    // Subagent does a tool round then stops with empty assistant content.
+    let sub_responses = vec![
+        vec![
+            se_tool(StreamToolCall {
+                id: "sc1".into(),
+                name: "read_file".into(),
+                arguments: "{}".into(),
+            }),
+            se_finish("tool_calls"),
+        ],
+        vec![se_finish("stop")],
+    ];
+    let mut sub_registry = Registry::new();
+    let _ = sub_registry.register(dummy_tool("read_file", "body"));
+
+    let sub_def = SubagentDef {
+        id: "coder".to_string(),
+        description: "coder".to_string(),
+        client: MockClient::new(sub_responses),
+        registry: Arc::new(sub_registry),
+        system_prompt: "sub".to_string(),
+        model_name: "mock".to_string(),
+    };
+
+    let mut agent = AgentSession::new(
+        store,
+        dummy_session(),
+        parent_client,
+        Arc::new(Registry::new()),
+        "sys".to_string(),
+        "/tmp".to_string(),
+    );
+    agent.set_subagents(HashMap::from([("coder".to_string(), sub_def)]));
+
+    let mut rx = agent.prompt("please delegate");
+    let mut delegate_result = String::new();
+    while let Some(ev) = rx.recv().await {
+        if let EventKind::ToolResult { name, result, .. } = &ev.kind
+            && name == "delegate"
+        {
+            delegate_result = result.clone();
+        }
+        if matches!(&ev.kind, EventKind::AgentDone(_)) {
+            break;
+        }
+    }
+    assert!(
+        delegate_result.contains("tools used: read_file"),
+        "delegate result was: {:?}",
+        delegate_result
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_delegate_ignores_pretool_chatter_without_final() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let store = Arc::new(TokioMutex::new(
+        Store::new(&dir.path().to_string_lossy()).unwrap(),
+    ));
+
+    let delegate_args = serde_json::json!({
+        "subagent": "coder", "task": "just tool"
+    })
+    .to_string();
+    let parent_responses = vec![
+        vec![
+            se_tool(StreamToolCall {
+                id: "call1".into(),
+                name: "delegate".into(),
+                arguments: delegate_args,
+            }),
+            se_finish("tool_calls"),
+        ],
+        vec![se("text_delta", "parent-done"), se_finish("stop")],
+    ];
+    let parent_client = MockClient::new(parent_responses);
+
+    // Pre-tool chatter, then tools, then empty final stop — must not return chatter.
+    let sub_responses = vec![
+        vec![
+            se("text_delta", "I'll inspect the file first"),
+            se_tool(StreamToolCall {
+                id: "sc1".into(),
+                name: "read_file".into(),
+                arguments: "{}".into(),
+            }),
+            se_finish("tool_calls"),
+        ],
+        vec![se_finish("stop")],
+    ];
+    let mut sub_registry = Registry::new();
+    let _ = sub_registry.register(dummy_tool("read_file", "body"));
+
+    let sub_def = SubagentDef {
+        id: "coder".to_string(),
+        description: "coder".to_string(),
+        client: MockClient::new(sub_responses),
+        registry: Arc::new(sub_registry),
+        system_prompt: "sub".to_string(),
+        model_name: "mock".to_string(),
+    };
+
+    let mut agent = AgentSession::new(
+        store,
+        dummy_session(),
+        parent_client,
+        Arc::new(Registry::new()),
+        "sys".to_string(),
+        "/tmp".to_string(),
+    );
+    agent.set_subagents(HashMap::from([("coder".to_string(), sub_def)]));
+
+    let mut rx = agent.prompt("please delegate");
+    let mut delegate_result = String::new();
+    while let Some(ev) = rx.recv().await {
+        if let EventKind::ToolResult { name, result, .. } = &ev.kind
+            && name == "delegate"
+        {
+            delegate_result = result.clone();
+        }
+        if matches!(&ev.kind, EventKind::AgentDone(_)) {
+            break;
+        }
+    }
+    assert!(
+        !delegate_result.contains("I'll inspect"),
+        "pre-tool chatter leaked: {:?}",
+        delegate_result
+    );
+    assert!(
+        delegate_result.contains("tools used: read_file"),
+        "delegate result was: {:?}",
+        delegate_result
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_delegate_subagent_error_is_tool_error() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let store = Arc::new(TokioMutex::new(
+        Store::new(&dir.path().to_string_lossy()).unwrap(),
+    ));
+
+    let delegate_args = serde_json::json!({
+        "subagent": "coder", "task": "do work"
+    })
+    .to_string();
+    let parent_responses = vec![
+        vec![
+            se_tool(StreamToolCall {
+                id: "call1".into(),
+                name: "delegate".into(),
+                arguments: delegate_args,
+            }),
+            se_finish("tool_calls"),
+        ],
+        vec![se("text_delta", "parent-done"), se_finish("stop")],
+    ];
+    let parent_client = MockClient::new(parent_responses);
+
+    // Partial text + retryable error → RetryAvailable (had content, no silent retry).
+    let sub_responses = vec![vec![
+        se("text_delta", "partial"),
+        StreamEvent::Error {
+            error: ProviderError {
+                status_code: 500,
+                body: "boom".into(),
+            },
+        },
+    ]];
+
+    let sub_def = SubagentDef {
+        id: "coder".to_string(),
+        description: "coder".to_string(),
+        client: MockClient::new(sub_responses),
+        registry: Arc::new(Registry::new()),
+        system_prompt: "sub".to_string(),
+        model_name: "mock".to_string(),
+    };
+
+    let mut agent = AgentSession::new(
+        store,
+        dummy_session(),
+        parent_client,
+        Arc::new(Registry::new()),
+        "sys".to_string(),
+        "/tmp".to_string(),
+    );
+    agent.set_subagents(HashMap::from([("coder".to_string(), sub_def)]));
+
+    let mut rx = agent.prompt("please delegate");
+    let mut saw_error = false;
+    let mut err_text = String::new();
+    let mut saw_result = false;
+    while let Some(ev) = rx.recv().await {
+        match &ev.kind {
+            EventKind::ToolError { name, error, .. } if name == "delegate" => {
+                saw_error = true;
+                err_text = error.clone();
+            }
+            EventKind::ToolResult { name, .. } if name == "delegate" => {
+                saw_result = true;
+            }
+            EventKind::AgentDone(_) => break,
+            _ => {}
+        }
+    }
+    assert!(saw_error, "expected ToolError for subagent RetryAvailable");
+    assert!(!saw_result, "must not emit ToolResult on subagent error");
+    assert!(
+        err_text.contains("subagent error") && err_text.contains("boom"),
+        "err was: {:?}",
+        err_text
+    );
+    assert!(
+        !err_text.contains("partial"),
+        "partial content must not leak into error: {:?}",
+        err_text
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_delegate_empty_task_is_error() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let store = Arc::new(TokioMutex::new(
+        Store::new(&dir.path().to_string_lossy()).unwrap(),
+    ));
+
+    let args = serde_json::json!({
+        "subagent": "coder", "task": "   "
+    })
+    .to_string();
+    let parent_responses = vec![
+        vec![
+            se_tool(StreamToolCall {
+                id: "call1".into(),
+                name: "delegate".into(),
+                arguments: args,
+            }),
+            se_finish("tool_calls"),
+        ],
+        vec![se("text_delta", "parent-done"), se_finish("stop")],
+    ];
+    let parent_client = MockClient::new(parent_responses);
+
+    let sub_def = SubagentDef {
+        id: "coder".to_string(),
+        description: "coder".to_string(),
+        client: MockClient::new(vec![]),
+        registry: Arc::new(Registry::new()),
+        system_prompt: "sub".to_string(),
+        model_name: "mock".to_string(),
+    };
+
+    let mut agent = AgentSession::new(
+        store,
+        dummy_session(),
+        parent_client,
+        Arc::new(Registry::new()),
+        "sys".to_string(),
+        "/tmp".to_string(),
+    );
+    agent.set_subagents(HashMap::from([("coder".to_string(), sub_def)]));
+
+    let mut rx = agent.prompt("please delegate");
+    let mut saw_error = false;
+    let mut err_text = String::new();
+    while let Some(ev) = rx.recv().await {
+        if let EventKind::ToolError { name, error, .. } = &ev.kind
+            && name == "delegate"
+        {
+            saw_error = true;
+            err_text = error.clone();
+        }
+        if matches!(&ev.kind, EventKind::AgentDone(_)) {
+            break;
+        }
+    }
+    assert!(saw_error, "expected ToolError for empty task");
+    assert!(
+        err_text.contains("task is empty"),
+        "err was: {:?}",
+        err_text
+    );
+}
+
+#[test]
+fn test_set_subagents_replaces_delegate_def() {
+    let mut agent = dummy_agent();
+    let make_def = |id: &str| SubagentDef {
+        id: id.to_string(),
+        description: id.to_string(),
+        client: MockClient::new(vec![]),
+        registry: Arc::new(Registry::new()),
+        system_prompt: "s".to_string(),
+        model_name: "m".to_string(),
+    };
+    agent.set_subagents(HashMap::from([("a".to_string(), make_def("a"))]));
+    agent.set_subagents(HashMap::from([
+        ("a".to_string(), make_def("a")),
+        ("b".to_string(), make_def("b")),
+    ]));
+    let defs = agent.tool_defs();
+    let delegates: Vec<_> = defs
+        .iter()
+        .filter(|d| d.function.name == "delegate")
+        .collect();
+    assert_eq!(delegates.len(), 1, "delegate tool should not be duplicated");
+}
+
+#[test]
+fn test_delegate_def_lists_role_tools() {
+    let mut agent = dummy_agent();
+    let mut reg = Registry::new();
+    let _ = reg.register(dummy_tool("bash", "ok"));
+    let _ = reg.register(dummy_tool("read_file", "ok"));
+    let def = SubagentDef {
+        id: "explorer".to_string(),
+        description: "Map code. Read-only.".to_string(),
+        client: MockClient::new(vec![]),
+        registry: Arc::new(reg),
+        system_prompt: "s".to_string(),
+        model_name: "m".to_string(),
+    };
+    agent.set_subagents(HashMap::from([("explorer".to_string(), def)]));
+    let delegate = agent
+        .tool_defs()
+        .into_iter()
+        .find(|d| d.function.name == "delegate")
+        .expect("delegate tool");
+    let desc = &delegate.function.description;
+    assert!(desc.contains("explorer"), "desc={desc}");
+    assert!(desc.contains("Map code. Read-only."), "desc={desc}");
+    assert!(desc.contains("[bash, read_file]"), "desc={desc}");
+    assert!(!desc.contains("OUTPUT RULES"), "desc={desc}");
 }
 
 #[tokio::test(flavor = "multi_thread")]

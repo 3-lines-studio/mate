@@ -26,7 +26,6 @@ pub struct ChatScreen {
     pub messages: Vec<ChatMsg>,
     pub live_blocks: Vec<LiveBlock>,
     pub waiting: bool,
-    pub compacting: bool,
     pub wait_start: Instant,
     pub wait_ticks: usize,
     pub events: Option<tokio::sync::mpsc::Receiver<Event>>,
@@ -101,7 +100,6 @@ impl ChatScreen {
             messages: Vec::new(),
             live_blocks: Vec::new(),
             waiting: false,
-            compacting: false,
             wait_start: Instant::now(),
             wait_ticks: 0,
             events: None,
@@ -177,7 +175,6 @@ impl ChatScreen {
         self.history.clear();
         self.history_idx = -1;
         self.waiting = false;
-        self.compacting = false;
         self.active_modal = Modal::None;
         self.retry_available = false;
         self.ctrl_c_armed_at = None;

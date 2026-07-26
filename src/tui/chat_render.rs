@@ -117,11 +117,7 @@ pub fn render_tool_block(
 
     if !result.is_empty() {
         let lang = result_lang(name, args);
-        let rendered = if name == "grep" {
-            format_grep_result(result, width, indent)
-        } else if name == "glob" {
-            format_glob_result(result, width, indent)
-        } else if !lang.is_empty() {
+        let rendered = if !lang.is_empty() {
             highlight::highlight(&lang, result)
         } else if let Ok(obj) = serde_json::from_str::<serde_json::Value>(result) {
             if let Ok(pretty) = serde_json::to_string_pretty(&obj) {
@@ -187,111 +183,6 @@ pub fn render_tool_block(
     }
 
     out
-}
-
-pub fn format_grep_result(result: &str, width: usize, indent: usize) -> String {
-    use crate::render::block::{hex_to_rgb, truncate, visible_width};
-    use crate::render::theme::VESPER;
-
-    let eff_w = width.saturating_sub(indent + 2);
-    let (pr, pg, pb) = hex_to_rgb(VESPER.accent);
-    let (nr, ng, nb) = hex_to_rgb(VESPER.muted);
-    let path_style = format!("\x1b[1;38;2;{pr};{pg};{pb}m");
-    let num_style = format!("\x1b[38;2;{nr};{ng};{nb}m");
-    let reset = "\x1b[0m";
-
-    let mut out = String::new();
-    let mut cur_path: Option<&str> = None;
-
-    for raw in result.lines() {
-        let mut parts = raw.splitn(3, ':');
-        let path = parts.next().unwrap_or("");
-        let (Some(linenum), Some(rest)) = (parts.next(), parts.next()) else {
-            out.push_str(raw);
-            out.push('\n');
-            continue;
-        };
-        let content = rest.strip_prefix(' ').unwrap_or(rest);
-
-        if cur_path != Some(path) {
-            cur_path = Some(path);
-            out.push_str(&path_style);
-            out.push_str(&truncate(path, eff_w, "\u{2026}"));
-            out.push_str(reset);
-            out.push('\n');
-        }
-
-        let avail = eff_w.saturating_sub(2 + linenum.len() + 2);
-        let content = if visible_width(content) > avail {
-            truncate(content, avail, "\u{2026}")
-        } else {
-            content.to_string()
-        };
-        out.push_str("  ");
-        out.push_str(&num_style);
-        out.push_str(linenum);
-        out.push_str(reset);
-        out.push_str(": ");
-        out.push_str(&content);
-        out.push('\n');
-    }
-
-    out.trim_end_matches('\n').to_string()
-}
-
-pub fn format_glob_result(result: &str, width: usize, indent: usize) -> String {
-    use crate::render::block::{hex_to_rgb, truncate, visible_width};
-    use crate::render::theme::VESPER;
-
-    let eff_w = width.saturating_sub(indent + 2);
-    let (dr, dg, db) = hex_to_rgb(VESPER.accent);
-    let dir_style = format!("\x1b[1;38;2;{dr};{dg};{db}m");
-    let reset = "\x1b[0m";
-
-    let mut out = String::new();
-    let mut cur_dir: Option<&str> = None;
-
-    for raw in result.lines() {
-        if raw.is_empty() {
-            continue;
-        }
-        let (dir, file) = match raw.rfind('/') {
-            Some(idx) => (&raw[..=idx], &raw[idx + 1..]),
-            None => ("", raw),
-        };
-
-        if dir.is_empty() {
-            cur_dir = Some("");
-            let f = if visible_width(file) > eff_w {
-                truncate(file, eff_w, "\u{2026}")
-            } else {
-                file.to_string()
-            };
-            out.push_str(&f);
-            out.push('\n');
-            continue;
-        }
-
-        if cur_dir != Some(dir) {
-            cur_dir = Some(dir);
-            out.push_str(&dir_style);
-            out.push_str(&truncate(dir, eff_w, "\u{2026}"));
-            out.push_str(reset);
-            out.push('\n');
-        }
-
-        let avail = eff_w.saturating_sub(2);
-        let f = if visible_width(file) > avail {
-            truncate(file, avail, "\u{2026}")
-        } else {
-            file.to_string()
-        };
-        out.push_str("  ");
-        out.push_str(&f);
-        out.push('\n');
-    }
-
-    out.trim_end_matches('\n').to_string()
 }
 
 pub fn git_branch(cwd: &str) -> Option<String> {
@@ -365,68 +256,7 @@ pub fn render_shortcuts_bar(f: &mut Frame, area: Rect, hints: &[(&str, &str)]) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::render::block::{strip_ansi, visible_width};
-
-    #[test]
-    fn test_format_grep_result_groups_by_file() {
-        let input = "src/a.rs:1: foo\nsrc/a.rs:5: bar\nsrc/b.rs:2: baz";
-        let out = format_grep_result(input, 80, 0);
-        let plain = strip_ansi(&out);
-        let lines: Vec<&str> = plain.lines().collect();
-        assert_eq!(lines[0], "src/a.rs");
-        assert!(lines[1].starts_with("  1: foo"));
-        assert!(lines[2].starts_with("  5: bar"));
-        assert_eq!(lines[3], "src/b.rs");
-        assert!(lines[4].starts_with("  2: baz"));
-    }
-
-    #[test]
-    fn test_format_grep_result_truncates_content() {
-        let long = "x".repeat(100);
-        let input = format!("a.rs:1: {}", long);
-        let out = format_grep_result(&input, 30, 0);
-        let plain = strip_ansi(&out);
-        let match_line = plain.lines().nth(1).unwrap();
-        assert!(visible_width(match_line) <= 28);
-        assert!(match_line.contains('\u{2026}'));
-    }
-
-    #[test]
-    fn test_format_grep_result_preserves_non_grep_line() {
-        let out = format_grep_result("not a grep line", 80, 0);
-        assert_eq!(strip_ansi(&out), "not a grep line");
-    }
-
-    #[test]
-    fn test_format_glob_result_groups_by_dir() {
-        let input = "src/core/local.rs\nsrc/core/mod.rs\nsrc/render/block.rs\nREADME.md";
-        let out = format_glob_result(input, 80, 0);
-        let plain = strip_ansi(&out);
-        let lines: Vec<&str> = plain.lines().collect();
-        assert_eq!(lines[0], "src/core/");
-        assert_eq!(lines[1], "  local.rs");
-        assert_eq!(lines[2], "  mod.rs");
-        assert_eq!(lines[3], "src/render/");
-        assert_eq!(lines[4], "  block.rs");
-        assert_eq!(lines[5], "README.md");
-    }
-
-    #[test]
-    fn test_format_glob_result_root_files_flat() {
-        let out = format_glob_result("a.go\nb.go", 80, 0);
-        let plain = strip_ansi(&out);
-        assert_eq!(plain, "a.go\nb.go");
-    }
-
-    #[test]
-    fn test_format_glob_result_truncates_filename() {
-        let long = format!("src/{}.rs", "x".repeat(100));
-        let out = format_glob_result(&long, 30, 0);
-        let plain = strip_ansi(&out);
-        let file_line = plain.lines().nth(1).unwrap();
-        assert!(visible_width(file_line) <= 28);
-        assert!(file_line.contains('\u{2026}'));
-    }
+    use crate::render::block::strip_ansi;
 
     #[test]
     fn test_thinking_indicator_rainbow_colors_per_char() {

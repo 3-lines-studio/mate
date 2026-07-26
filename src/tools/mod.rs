@@ -1,9 +1,6 @@
 mod bash;
 mod edit_file;
 pub mod gitignore;
-mod glob;
-mod grep;
-pub(crate) mod index;
 mod read_file;
 pub mod webfetch;
 mod write_file;
@@ -116,9 +113,6 @@ pub fn standard() -> Vec<Tool> {
         read_file::tool(),
         write_file::tool(),
         edit_file::tool(),
-        grep::tool(),
-        glob::tool(),
-        index::symbols_tool(),
         webfetch::tool(),
     ]
 }
@@ -334,18 +328,9 @@ mod tests {
     #[test]
     fn test_standard() {
         let tools = standard();
-        assert_eq!(tools.len(), 8);
+        assert_eq!(tools.len(), 5);
         let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
-        for n in &[
-            "bash",
-            "read_file",
-            "write_file",
-            "edit_file",
-            "grep",
-            "glob",
-            "symbols",
-            "web_fetch",
-        ] {
+        for n in &["bash", "read_file", "write_file", "edit_file", "web_fetch"] {
             assert!(names.contains(n), "missing {}", n);
         }
     }
@@ -436,16 +421,7 @@ mod tests {
     fn test_standard_registry() {
         let r = Registry::standard();
         let names = r.names();
-        for n in &[
-            "bash",
-            "read_file",
-            "write_file",
-            "edit_file",
-            "grep",
-            "glob",
-            "symbols",
-            "web_fetch",
-        ] {
+        for n in &["bash", "read_file", "write_file", "edit_file", "web_fetch"] {
             assert!(
                 names.contains(&n.to_string()),
                 "standard tool {:?} missing from registry: {:?}",

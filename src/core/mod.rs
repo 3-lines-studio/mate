@@ -20,7 +20,6 @@ pub mod session_manager;
 pub struct Deps {
     pub agent_name: String,
     pub client: Client,
-    pub compaction_client: Option<Client>,
     pub registry: Arc<Registry>,
     pub system_prompt: String,
     pub cwd: String,

@@ -398,7 +398,7 @@ impl ChatScreen {
     }
 
     pub(super) fn bottom_bar_height(&self) -> u16 {
-        if self.waiting || self.compacting {
+        if self.waiting {
             let mut h = 1u16;
             if self.active_modal == super::Modal::Command {
                 h += (self.command_dropdown.items.len() + 3) as u16;
@@ -563,14 +563,9 @@ impl ChatScreen {
             y_offset += h;
         }
 
-        if self.waiting || self.compacting {
-            let label = if self.compacting {
-                "Compacting…"
-            } else {
-                "Thinking…"
-            };
+        if self.waiting {
             let mut indicator =
-                thinking_indicator(self.wait_ticks, label, self.wait_start.elapsed());
+                thinking_indicator(self.wait_ticks, "Thinking…", self.wait_start.elapsed());
             indicator.push_span(Span::styled(
                 "  Esc to stop",
                 Style::default().fg(COLORS.placeholder),

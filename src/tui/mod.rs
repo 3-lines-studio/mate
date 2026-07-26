@@ -85,7 +85,7 @@ impl App {
             self.chat.poll_files_index();
             terminal.draw(|f| self.draw(f))?;
 
-            if self.chat.waiting || self.chat.compacting {
+            if self.chat.waiting {
                 let mut pending_events = Vec::new();
                 if let Some(ref mut events) = self.chat.events {
                     loop {
@@ -331,7 +331,7 @@ impl App {
                                     self.chat.close_dropdowns();
                                     return;
                                 }
-                                if self.chat.waiting || self.chat.compacting {
+                                if self.chat.waiting {
                                     self.state = AppState::Confirm(ConfirmKind::AbortResponse);
                                     return;
                                 }
@@ -588,7 +588,6 @@ impl App {
             last.rendered.clear();
         }
         self.chat.waiting = false;
-        self.chat.compacting = false;
     }
 
     fn request_quit(&mut self) {
@@ -778,11 +777,6 @@ impl App {
                     }
                 }
             }
-            "compact" => {
-                if self.chat.active_session.is_some() {
-                    self.chat.compact_session();
-                }
-            }
             "config" => {
                 self.config_screen.reload();
                 self.state = AppState::Config;
@@ -841,7 +835,6 @@ mod tests {
         let deps = Deps {
             agent_name: String::new(),
             client: Client::new("http://localhost", "m", "k", ModelProfile::default()),
-            compaction_client: None,
             registry: Arc::new(Registry::standard()),
             system_prompt: String::new(),
             cwd: path.clone(),

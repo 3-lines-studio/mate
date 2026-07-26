@@ -37,7 +37,6 @@ pub enum EventKind {
     RetryAvailable(String),
     AgentDone(String),
     Usage(Usage),
-    CompactingStart,
 }
 
 impl Event {
@@ -135,13 +134,6 @@ pub(super) struct RoundResult {
     pub reasoning_details: Vec<ReasoningDetail>,
     pub tool_calls: Vec<StreamToolCall>,
     pub finish_reason: String,
-}
-
-#[derive(Clone)]
-pub(super) struct CompactionState {
-    pub compaction_client: Option<Arc<dyn ChatClient>>,
-    pub compacted_summary: String,
-    pub compacted_up_to: String,
 }
 
 #[derive(Clone)]

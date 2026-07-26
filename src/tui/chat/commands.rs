@@ -1,22 +1,6 @@
 use super::ChatScreen;
 
 impl ChatScreen {
-    pub fn compact_session(&mut self) {
-        if let Some(ref asession) = self.active_session {
-            match asession.compact() {
-                Ok(events) => {
-                    self.events = Some(events);
-                    self.compacting = true;
-                    self.wait_start = std::time::Instant::now();
-                    self.wait_ticks = 0;
-                }
-                Err(e) => {
-                    self.add_message("error", &format!("Compact failed: {}", e));
-                }
-            }
-        }
-    }
-
     pub fn copy_last_response(&mut self) {
         for msg in self.messages.iter().rev() {
             if msg.role == "assistant" {

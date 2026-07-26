@@ -48,8 +48,6 @@ impl Store {
             total_tokens: 0,
             context_tokens: 0,
             cost: 0.0,
-            compacted_summary: String::new(),
-            compacted_up_to: String::new(),
         };
         self.save_meta_locked(&sess)?;
         Ok(sess)
@@ -520,8 +518,6 @@ mod tests {
             total_tokens: 0,
             context_tokens: 0,
             cost: 0.0,
-            compacted_summary: String::new(),
-            compacted_up_to: String::new(),
         };
 
         store.set_name(&mut sess, "what is go?");
@@ -547,8 +543,6 @@ mod tests {
             total_tokens: 0,
             context_tokens: 0,
             cost: 0.0,
-            compacted_summary: String::new(),
-            compacted_up_to: String::new(),
         };
 
         store.set_name(&mut sess, "first message");
@@ -575,8 +569,6 @@ mod tests {
             total_tokens: 0,
             context_tokens: 0,
             cost: 0.0,
-            compacted_summary: String::new(),
-            compacted_up_to: String::new(),
         };
 
         store.set_name(&mut sess, "line1\nline2\nline3");

@@ -31,7 +31,9 @@ impl super::AgentSession {
         });
 
         let t0 = std::time::Instant::now();
-        let mut ancestry_msgs = {
+        let mut ancestry_msgs = if self.subagents_state.is_subagent {
+            Vec::new()
+        } else {
             let turns_result = {
                 let mut store = self.store.lock().await;
                 store
@@ -40,9 +42,12 @@ impl super::AgentSession {
             };
             match turns_result {
                 Ok(turns) => {
-                    let ancestry_msgs = self.compact_ancestry(&turns, false).await;
+                    let mut ancestry_msgs = Vec::new();
+                    for t in &turns {
+                        ancestry_msgs.extend_from_slice(&t.messages);
+                    }
                     log::debug!(
-                        "agent phase phase=compact dur={:?} turns={}",
+                        "agent phase phase=ancestry dur={:?} turns={}",
                         t0.elapsed(),
                         turns.len()
                     );
@@ -375,9 +380,6 @@ impl super::AgentSession {
                 store.set_name(&mut self.sess, &label);
             }
         }
-
-        self.sess.compacted_summary = self.compaction.compacted_summary.clone();
-        self.sess.compacted_up_to = self.compaction.compacted_up_to.clone();
 
         {
             let mut store = self.store.lock().await;

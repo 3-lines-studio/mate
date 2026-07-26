@@ -248,7 +248,7 @@ mod tests {
         s.open_command_dropdown();
         assert_eq!(s.command_dropdown.items.len(), COMMANDS.len());
 
-        s.command_query = "comp".to_string();
+        s.command_query = "copy".to_string();
         s.filter_command_dropdown();
         let labels: Vec<&str> = s
             .command_dropdown
@@ -256,7 +256,7 @@ mod tests {
             .iter()
             .map(|item| item.label.as_str())
             .collect();
-        assert_eq!(labels, vec!["Compact"]);
+        assert_eq!(labels, vec!["Copy Last Response"]);
 
         s.command_query = "toggle".to_string();
         s.filter_command_dropdown();

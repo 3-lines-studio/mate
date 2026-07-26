@@ -4,12 +4,45 @@ use crate::message::{Message, Role, ToolCall, ToolDef};
 use crate::provider::{StreamToolCall, Usage};
 use crate::session::store::Store;
 use serde::Deserialize;
-use std::collections::HashMap;
+use std::collections::HashSet;
 use std::sync::Arc;
 use tokio::sync::Mutex as TokioMutex;
 use tokio::sync::mpsc;
+use tokio::task::AbortHandle;
 
 const DELEGATE_TOOL_NAME: &str = "delegate";
+
+struct AbortOnDrop {
+    handle: Option<AbortHandle>,
+}
+
+impl AbortOnDrop {
+    fn new(handle: AbortHandle) -> Self {
+        Self {
+            handle: Some(handle),
+        }
+    }
+
+    fn disarm(&mut self) {
+        self.handle.take();
+    }
+}
+
+impl Drop for AbortOnDrop {
+    fn drop(&mut self) {
+        if let Some(h) = self.handle.take() {
+            h.abort();
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct DelegateParams {
+    subagent: String,
+    task: String,
+    #[serde(default)]
+    context: String,
+}
 
 impl super::AgentSession {
     pub(super) async fn execute_tools(
@@ -43,33 +76,50 @@ impl super::AgentSession {
                 had_error: false,
             })
             .collect();
+        let mut outstanding: HashSet<usize> = (0..n).collect();
         let mut deferred_errors: Vec<Event> = Vec::new();
         let mut subagent_cost = 0.0;
 
         while let Some(result) = set.join_next().await {
-            if let Ok((i, result_str, dur, is_error, delegate_data)) = result {
-                pending[i].result = result_str;
-                pending[i].duration = dur;
-                pending[i].had_error = is_error;
-                if is_error {
-                    deferred_errors.push(Event::tool_error_ev(
-                        &pending[i].call,
-                        &pending[i].result,
-                        &pending[i].duration,
-                    ));
+            match result {
+                Ok((i, result_str, dur, is_error, delegate_data)) => {
+                    outstanding.remove(&i);
+                    pending[i].result = result_str;
+                    pending[i].duration = dur;
+                    pending[i].had_error = is_error;
+                    if is_error {
+                        deferred_errors.push(Event::tool_error_ev(
+                            &pending[i].call,
+                            &pending[i].result,
+                            &pending[i].duration,
+                        ));
+                    }
+                    if let Some(dd) = delegate_data {
+                        self.sess.prompt_tokens += dd.prompt_tokens;
+                        self.sess.completion_tokens += dd.completion_tokens;
+                        self.sess.cost += dd.cost;
+                        subagent_cost += dd.cost;
+                        self.subagents_state.subagent_turns.push(SubagentTurn {
+                            msgs: dd.msgs,
+                            subagent: dd.subagent_id,
+                            tool_call_id: dd.tool_call_id,
+                        });
+                    }
                 }
-                if let Some(dd) = delegate_data {
-                    self.sess.prompt_tokens += dd.prompt_tokens;
-                    self.sess.completion_tokens += dd.completion_tokens;
-                    self.sess.cost += dd.cost;
-                    subagent_cost += dd.cost;
-                    self.subagents_state.subagent_turns.push(SubagentTurn {
-                        msgs: dd.msgs,
-                        subagent: dd.subagent_id,
-                        tool_call_id: dd.tool_call_id,
-                    });
+                Err(e) => {
+                    log::warn!("tool task join error: {}", e);
                 }
             }
+        }
+
+        for i in outstanding {
+            pending[i].result = "tool task failed".into();
+            pending[i].had_error = true;
+            deferred_errors.push(Event::tool_error_ev(
+                &pending[i].call,
+                &pending[i].result,
+                &pending[i].duration,
+            ));
         }
 
         if subagent_cost > 0.0 {
@@ -100,7 +150,42 @@ impl super::AgentSession {
         tc: StreamToolCall,
         events: mpsc::Sender<Event>,
     ) {
-        let subagents = self.subagents_state.subagents.clone();
+        let params: DelegateParams = match serde_json::from_str(&tc.arguments) {
+            Ok(p) => p,
+            Err(e) => {
+                set.spawn(async move {
+                    let msg = format!("invalid delegate params: {}", e);
+                    (i, msg, String::new(), true, None)
+                });
+                return;
+            }
+        };
+
+        if params.task.trim().is_empty() {
+            set.spawn(async move {
+                (
+                    i,
+                    "invalid delegate params: task is empty".into(),
+                    String::new(),
+                    true,
+                    None,
+                )
+            });
+            return;
+        }
+
+        let def = match self.subagents_state.subagents.get(&params.subagent) {
+            Some(d) => d.clone(),
+            None => {
+                let name = params.subagent;
+                set.spawn(async move {
+                    let msg = format!("subagent {:?} not found", name);
+                    (i, msg, String::new(), true, None)
+                });
+                return;
+            }
+        };
+
         let store = self.store.clone();
         let sess_id = self.sess.id.clone();
         let cwd = self.cwd.clone();
@@ -109,12 +194,23 @@ impl super::AgentSession {
             let start = std::time::Instant::now();
             let tc_clone = tc.clone();
             let events_clone = events.clone();
-            let (result, dd) = run_delegate(tc, subagents, store, sess_id, cwd, events).await;
+            let (result, is_error, dd) = run_delegate(DelegateRun {
+                tc,
+                params,
+                def,
+                store,
+                sess_id,
+                cwd,
+                parent_events: events,
+            })
+            .await;
             let dur = format_duration(start.elapsed());
-            let _ = events_clone
-                .send(Event::tool_result_ev(&tc_clone, &result, &dur))
-                .await;
-            (i, result, dur, false, Some(dd))
+            if !is_error {
+                let _ = events_clone
+                    .send(Event::tool_result_ev(&tc_clone, &result, &dur))
+                    .await;
+            }
+            (i, result, dur, is_error, dd)
         });
     }
 
@@ -215,170 +311,191 @@ impl super::AgentSession {
     }
 }
 
-fn run_delegate(
+struct DelegateRun {
     tc: StreamToolCall,
-    subagents: HashMap<String, SubagentDef>,
+    params: DelegateParams,
+    def: SubagentDef,
     store: Arc<TokioMutex<Store>>,
     sess_id: String,
     cwd: String,
     parent_events: mpsc::Sender<Event>,
-) -> std::pin::Pin<Box<dyn std::future::Future<Output = (String, DelegateData)> + Send>> {
-    Box::pin(async move {
-        #[derive(Deserialize)]
-        struct DelegateParams {
-            subagent: String,
-            task: String,
-            #[serde(default)]
-            context: String,
-        }
-
-        let params: DelegateParams = match serde_json::from_str(&tc.arguments) {
-            Ok(p) => p,
-            Err(e) => {
-                return (
-                    format!("invalid delegate params: {}", e),
-                    DelegateData {
-                        prompt_tokens: 0,
-                        completion_tokens: 0,
-                        cost: 0.0,
-                        msgs: vec![],
-                        subagent_id: String::new(),
-                        tool_call_id: tc.id.clone(),
-                    },
-                );
-            }
-        };
-
-        let def = match subagents.get(&params.subagent) {
-            Some(d) => d.clone(),
-            None => {
-                return (
-                    format!("subagent {:?} not found", params.subagent),
-                    DelegateData {
-                        prompt_tokens: 0,
-                        completion_tokens: 0,
-                        cost: 0.0,
-                        msgs: vec![],
-                        subagent_id: String::new(),
-                        tool_call_id: tc.id.clone(),
-                    },
-                );
-            }
-        };
-
-        let mut task_text = params.task;
-        if !params.context.is_empty() {
-            task_text.push_str("\n\n");
-            task_text.push_str(&params.context);
-        }
-
-        let mut sub = super::AgentSession::new_subagent(store, sess_id, &def, cwd, &tc.id);
-
-        let (event_tx, mut event_rx) = mpsc::channel(100);
-        let sub_id = def.id.clone();
-        let tc_id = tc.id.clone();
-
-        let join_handle = tokio::spawn(async move {
-            sub.run_loop(&task_text, &event_tx).await;
-            (
-                sub.sess.prompt_tokens,
-                sub.sess.completion_tokens,
-                sub.sess.cost,
-                sub.captured_msgs,
-                sub.working_messages,
-            )
-        });
-
-        let mut had_error = false;
-        while let Some(mut ev) = event_rx.recv().await {
-            match ev.kind {
-                EventKind::AgentDone(_)
-                | EventKind::Usage(_)
-                | EventKind::TextDelta(_)
-                | EventKind::ReasoningDelta(_) => {}
-                EventKind::Error(_) => {
-                    had_error = true;
-                    ev.subagent = sub_id.clone();
-                    ev.subagent_id = tc_id.clone();
-                    let _ = parent_events.send(ev).await;
-                }
-                _ => {
-                    ev.subagent = sub_id.clone();
-                    ev.subagent_id = tc_id.clone();
-                    let _ = parent_events.send(ev).await;
-                }
-            }
-        }
-
-        let (prompt_tokens, completion_tokens, cost, captured_msgs, working_msgs) = join_handle
-            .await
-            .unwrap_or((0, 0, 0.0, Vec::new(), Vec::new()));
-
-        let msgs = if captured_msgs.is_empty() {
-            working_msgs
-        } else {
-            captured_msgs
-        };
-
-        if had_error {
-            return (
-                "(subagent encountered an error)".into(),
-                DelegateData {
-                    prompt_tokens,
-                    completion_tokens,
-                    cost,
-                    msgs,
-                    subagent_id: sub_id,
-                    tool_call_id: tc_id,
-                },
-            );
-        }
-
-        let content = extract_final_content(&msgs);
-        let final_result = if content.is_empty() {
-            "(subagent produced no output)".into()
-        } else {
-            content
-        };
-
-        (
-            final_result,
-            DelegateData {
-                prompt_tokens,
-                completion_tokens,
-                cost,
-                msgs,
-                subagent_id: sub_id,
-                tool_call_id: tc_id,
-            },
-        )
-    })
 }
 
-fn extract_final_content(msgs: &[Message]) -> String {
-    for msg in msgs.iter().rev() {
-        if msg.role == Role::Assistant && !msg.content.is_empty() {
+async fn run_delegate(run: DelegateRun) -> (String, bool, Option<DelegateData>) {
+    let DelegateRun {
+        tc,
+        params,
+        def,
+        store,
+        sess_id,
+        cwd,
+        parent_events,
+    } = run;
+
+    let mut task_text = params.task;
+    if !params.context.is_empty() {
+        task_text.push_str("\n\n");
+        task_text.push_str(&params.context);
+    }
+
+    let mut sub = super::AgentSession::new_subagent(store, sess_id, &def, cwd, &tc.id);
+
+    let (event_tx, mut event_rx) = mpsc::channel(100);
+    let sub_id = def.id.clone();
+    let tc_id = tc.id.clone();
+
+    let join_handle = tokio::spawn(async move {
+        sub.run_loop(&task_text, &event_tx).await;
+        (
+            sub.sess.prompt_tokens,
+            sub.sess.completion_tokens,
+            sub.sess.cost,
+            sub.captured_msgs,
+            sub.working_messages,
+        )
+    });
+    let mut abort_guard = AbortOnDrop::new(join_handle.abort_handle());
+
+    let mut had_error = false;
+    let mut error_msg = String::new();
+    while let Some(mut ev) = event_rx.recv().await {
+        match &ev.kind {
+            EventKind::AgentDone(_)
+            | EventKind::Usage(_)
+            | EventKind::TextDelta(_)
+            | EventKind::ReasoningDelta(_)
+            | EventKind::Retry(_) => {}
+            EventKind::Error(msg) | EventKind::RetryAvailable(msg) => {
+                had_error = true;
+                error_msg = msg.clone();
+            }
+            _ => {
+                ev.subagent = sub_id.clone();
+                ev.subagent_id = tc_id.clone();
+                let _ = parent_events.send(ev).await;
+            }
+        }
+    }
+
+    let joined = join_handle.await;
+    abort_guard.disarm();
+
+    let (prompt_tokens, completion_tokens, cost, captured_msgs, working_msgs) = match joined {
+        Ok(v) => v,
+        Err(e) => {
+            if e.is_cancelled() {
+                return (
+                    "(subagent aborted)".into(),
+                    true,
+                    Some(DelegateData {
+                        prompt_tokens: 0,
+                        completion_tokens: 0,
+                        cost: 0.0,
+                        msgs: vec![],
+                        subagent_id: sub_id,
+                        tool_call_id: tc_id,
+                    }),
+                );
+            }
+            return (
+                format!("subagent task panicked: {}", e),
+                true,
+                Some(DelegateData {
+                    prompt_tokens: 0,
+                    completion_tokens: 0,
+                    cost: 0.0,
+                    msgs: vec![],
+                    subagent_id: sub_id,
+                    tool_call_id: tc_id,
+                }),
+            );
+        }
+    };
+
+    let msgs = if captured_msgs.is_empty() {
+        working_msgs
+    } else {
+        captured_msgs
+    };
+
+    let (final_result, is_error) = if had_error {
+        let result = if error_msg.is_empty() {
+            "(subagent encountered an error)".into()
+        } else {
+            format!("(subagent error: {})", error_msg)
+        };
+        (result, true)
+    } else {
+        (extract_parent_result(&msgs), false)
+    };
+
+    (
+        final_result,
+        is_error,
+        Some(DelegateData {
+            prompt_tokens,
+            completion_tokens,
+            cost,
+            msgs,
+            subagent_id: sub_id,
+            tool_call_id: tc_id,
+        }),
+    )
+}
+
+fn extract_parent_result(msgs: &[Message]) -> String {
+    for (i, msg) in msgs.iter().enumerate().rev() {
+        if msg.role != Role::Assistant || msg.content.is_empty() || !msg.tool_calls.is_empty() {
+            continue;
+        }
+        let tools_after = msgs[i + 1..].iter().any(|m| {
+            m.role == Role::Tool || (m.role == Role::Assistant && !m.tool_calls.is_empty())
+        });
+        if !tools_after {
             return msg.content.clone();
         }
     }
-    String::new()
+
+    let mut tools: Vec<&str> = Vec::new();
+    for msg in msgs {
+        if msg.role == Role::Tool && !msg.name.is_empty() && !tools.contains(&msg.name.as_str()) {
+            tools.push(&msg.name);
+        }
+    }
+    if tools.is_empty() {
+        "(subagent produced no output)".into()
+    } else {
+        format!(
+            "(subagent finished without a final message; tools used: {})",
+            tools.join(", ")
+        )
+    }
 }
 
-pub(super) fn build_delegate_def(
-    names: &[String],
-    descriptions: &HashMap<String, String>,
-) -> ToolDef {
-    let mut desc = String::from("The subagent to delegate to. Available: ");
-    for (i, name) in names.iter().enumerate() {
-        if i > 0 {
-            desc.push_str(" | ");
+pub(super) struct DelegateRole {
+    pub id: String,
+    pub description: String,
+    pub tools: Vec<String>,
+}
+
+pub(super) fn build_delegate_def(roles: &[DelegateRole]) -> ToolDef {
+    let names: Vec<&str> = roles.iter().map(|r| r.id.as_str()).collect();
+
+    let mut tool_desc = String::from(
+        "Hand off one scoped job to a subagent. Isolated history; no nested delegate. \
+Only the final message returns. Fan out independent calls. Not for one trivial tool call.\n\nRoles:",
+    );
+    for r in roles {
+        tool_desc.push_str("\n- ");
+        tool_desc.push_str(&r.id);
+        if !r.description.is_empty() {
+            tool_desc.push_str(" — ");
+            tool_desc.push_str(&r.description);
         }
-        desc.push_str(name);
-        if let Some(d) = descriptions.get(name)
-            && !d.is_empty()
-        {
-            desc.push_str(": ");
-            desc.push_str(d);
+        if !r.tools.is_empty() {
+            tool_desc.push_str(" [");
+            tool_desc.push_str(&r.tools.join(", "));
+            tool_desc.push(']');
         }
     }
 
@@ -387,21 +504,23 @@ pub(super) fn build_delegate_def(
             (
                 "subagent",
                 serde_json::json!({
-                    "type": "string", "enum": names, "description": desc
+                    "type": "string",
+                    "enum": names,
+                    "description": "Role id"
                 }),
             ),
             (
                 "task",
                 serde_json::json!({
                     "type": "string",
-                    "description": "The task for the subagent. Be specific and include all necessary details."
+                    "description": "One goal, success check, paths, constraints. Prefer paths over pastes."
                 }),
             ),
             (
                 "context",
                 serde_json::json!({
                     "type": "string",
-                    "description": "Additional context (file contents, requirements, constraints). Optional."
+                    "description": "Optional bulk (snippets, logs). Prefer paths when disk is readable."
                 }),
             ),
         ],
@@ -412,7 +531,7 @@ pub(super) fn build_delegate_def(
         def_type: "function".into(),
         function: crate::message::ToolDefFunction {
             name: DELEGATE_TOOL_NAME.into(),
-            description: "Delegate a task to a subagent with its own model and tools. The subagent runs to completion and returns its result. Use for complex coding tasks or research that would benefit from a specialized model.".into(),
+            description: tool_desc,
             parameters: params,
         },
     }

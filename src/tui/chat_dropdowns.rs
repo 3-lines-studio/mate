@@ -93,7 +93,6 @@ pub const COMMANDS: &[(&str, &str)] = &[
     ("Toggle Subagent Calls", "subagents"),
     ("Toggle Thinking", "thinking"),
     ("Switch Model", "model"),
-    ("Compact", "compact"),
     ("Copy Last Response", "copy-last"),
     ("Export as Markdown", "export-md"),
     ("Edit Config", "config"),

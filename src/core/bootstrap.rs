@@ -38,25 +38,6 @@ pub fn init_with_config(
         resolve_client(&cfg.agent.model, &cfg.models, &cfg.providers, verbose)
             .map_err(|e| format!("main model: {}", e))?;
 
-    let mut compaction_client = None;
-    if !cfg.agent.compaction_model.is_empty() {
-        match resolve_client(
-            &cfg.agent.compaction_model,
-            &cfg.models,
-            &cfg.providers,
-            verbose,
-        ) {
-            Ok((cc, _)) => compaction_client = Some(cc),
-            Err(e) => {
-                log::warn!(
-                    "compaction model not resolved, compaction disabled model={}: {}",
-                    cfg.agent.compaction_model,
-                    e
-                );
-            }
-        }
-    }
-
     let sp = if system_prompt.is_empty() {
         agent::build_system_prompt("", "", "", &cfg.agent.prompt, !cfg.agent.tools.is_empty())
     } else {
@@ -85,7 +66,6 @@ pub fn init_with_config(
     Ok(Deps {
         config: cfg,
         client,
-        compaction_client,
         model_name,
         registry: Arc::new(registry),
         system_prompt: sp,
@@ -160,8 +140,6 @@ pub fn init(
         let _ = reg.register(skill_store.load_tool());
     }
     deps.skills = Some(skill_store);
-
-    crate::tools::index::build_index_background(&deps.cwd);
 
     Ok(deps)
 }

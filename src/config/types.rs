@@ -44,8 +44,6 @@ pub struct AgentConfig {
     pub interfaces: Vec<String>,
     #[serde(default)]
     pub prompt: String,
-    #[serde(default)]
-    pub compaction_model: String,
 }
 
 impl Default for AgentConfig {
@@ -55,7 +53,6 @@ impl Default for AgentConfig {
             tools: default_all_tools(),
             interfaces: vec![],
             prompt: String::new(),
-            compaction_model: String::new(),
         }
     }
 }
