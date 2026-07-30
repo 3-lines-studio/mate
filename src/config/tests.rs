@@ -55,7 +55,6 @@ fn test_save_tui_does_not_write_defaults() {
     assert!(!cfg.contains_key("session"));
     assert!(!cfg.contains_key("slack"));
     assert!(!cfg.contains_key("telegram"));
-    assert!(!cfg.contains_key("schedule"));
     assert!(!cfg.contains_key("providers"));
     assert!(!cfg.contains_key("models"));
     assert!(!cfg.contains_key("subagents"));

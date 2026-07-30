@@ -72,7 +72,6 @@ pub fn init_with_config(
         cwd: cwd.to_string(),
         store,
         subagents,
-        skills: None,
         config_dir: String::new(),
         agent_name: String::new(),
         templates: Vec::new(),
@@ -139,7 +138,6 @@ pub fn init(
         let _ = reg.register(skill_store.list_tool());
         let _ = reg.register(skill_store.load_tool());
     }
-    deps.skills = Some(skill_store);
 
     Ok(deps)
 }

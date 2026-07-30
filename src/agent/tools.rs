@@ -73,7 +73,6 @@ impl super::AgentSession {
                 call: tool_calls[i].clone(),
                 result: String::new(),
                 duration: String::new(),
-                had_error: false,
             })
             .collect();
         let mut outstanding: HashSet<usize> = (0..n).collect();
@@ -86,7 +85,6 @@ impl super::AgentSession {
                     outstanding.remove(&i);
                     pending[i].result = result_str;
                     pending[i].duration = dur;
-                    pending[i].had_error = is_error;
                     if is_error {
                         deferred_errors.push(Event::tool_error_ev(
                             &pending[i].call,
@@ -114,7 +112,6 @@ impl super::AgentSession {
 
         for i in outstanding {
             pending[i].result = "tool task failed".into();
-            pending[i].had_error = true;
             deferred_errors.push(Event::tool_error_ev(
                 &pending[i].call,
                 &pending[i].result,

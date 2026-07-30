@@ -1,5 +1,5 @@
 use crate::core::session_manager::SessionManager;
-use crate::core::{Deps, Interface, Notifier};
+use crate::core::{Deps, Interface};
 use crate::integration::{self, ActivePrompt, StreamingBackend};
 use crate::markdown::telegram::markdown_to_telegram;
 use async_trait::async_trait;
@@ -311,47 +311,6 @@ impl Interface for BotAdapter {
         let rt = tokio::runtime::Runtime::new()?;
         rt.block_on(bot.run_loop());
         Ok(())
-    }
-
-    fn notifier(&self, deps: &Deps) -> Option<Arc<dyn Notifier + Send + Sync>> {
-        let token = deps.config.telegram.bot_token.clone();
-        if token.is_empty() {
-            return None;
-        }
-        Some(Arc::new(TelegramNotifier {
-            client: reqwest::Client::new(),
-            bot_token: token,
-        }))
-    }
-}
-
-struct TelegramNotifier {
-    client: reqwest::Client,
-    bot_token: String,
-}
-
-impl Notifier for TelegramNotifier {
-    fn schedule_notify(
-        &self,
-        channel: &str,
-        message: &str,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let chat_id: i64 = channel
-            .parse()
-            .map_err(|_| format!("telegram invalid chat_id: {}", channel))?;
-        let rt = tokio::runtime::Runtime::new()?;
-        rt.block_on(async {
-            tg_send_message(
-                &self.client,
-                &self.bot_token,
-                chat_id,
-                message,
-                Some("MarkdownV2"),
-            )
-            .await
-            .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.into() })?;
-            Ok(())
-        })
     }
 }
 

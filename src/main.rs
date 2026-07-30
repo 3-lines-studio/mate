@@ -1,4 +1,4 @@
-use mate::core::{self, bootstrap, scheduler};
+use mate::core::{self, bootstrap};
 use mate::prompts;
 use std::io::Read;
 
@@ -323,18 +323,6 @@ fn default_cmd(args: &[String]) {
                     std::process::exit(1);
                 }
             };
-            if !deps.config.schedule.jobs.is_empty() {
-                match iface.notifier(&deps) {
-                    Some(notifier) => scheduler::start_scheduler(&deps, notifier),
-                    None => {
-                        eprintln!(
-                            "mate: schedule configured but interface \"{}\" has no notifier (not supported or token not configured)",
-                            name
-                        );
-                        std::process::exit(1);
-                    }
-                }
-            }
             if let Err(e) = iface.run(deps) {
                 eprintln!("mate: {}", e);
                 std::process::exit(1);

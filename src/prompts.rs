@@ -47,16 +47,11 @@ fn parse_file(path: &Path) -> Result<Option<Template>, Box<dyn std::error::Error
         body: String::new(),
     };
 
-    if data.starts_with("---\n") || data.starts_with("---\r\n") {
-        let rest = &data[4..];
-        if let Some(idx) = rest.find("\n---") {
-            let fm = &rest[..idx];
-            let body = &rest[idx + 4..];
-            let body = body.trim_start_matches('\r').trim_start_matches('\n');
-            t.body = body.to_string();
-            parse_frontmatter(fm, &mut t);
-            return Ok(Some(t));
-        }
+    if let Some((fm, body)) = crate::util::split_frontmatter(&data) {
+        let body = body.trim_start_matches('\r').trim_start_matches('\n');
+        t.body = body.to_string();
+        parse_frontmatter(fm, &mut t);
+        return Ok(Some(t));
     }
 
     t.body = data.clone();

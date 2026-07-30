@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -10,7 +10,7 @@ pub enum Role {
     Tool,
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Message {
     pub role: Role,
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -27,54 +27,6 @@ pub struct Message {
     pub name: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub tool_duration: String,
-}
-
-impl Serialize for Message {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        use serde::ser::SerializeStruct;
-        let pad =
-            self.role == Role::Assistant && self.content.is_empty() && self.tool_calls.is_empty();
-        let mut st = serializer.serialize_struct("Message", 8)?;
-        st.serialize_field("role", &self.role)?;
-        if pad {
-            st.serialize_field("content", " ")?;
-        } else if !self.content.is_empty() {
-            st.serialize_field("content", &self.content)?;
-        } else {
-            st.skip_field("content")?;
-        }
-        if !self.reasoning_content.is_empty() {
-            st.serialize_field("reasoning_content", &self.reasoning_content)?;
-        } else {
-            st.skip_field("reasoning_content")?;
-        }
-        if !self.reasoning_details.is_empty() {
-            st.serialize_field("reasoning_details", &self.reasoning_details)?;
-        } else {
-            st.skip_field("reasoning_details")?;
-        }
-        if !self.tool_calls.is_empty() {
-            st.serialize_field("tool_calls", &self.tool_calls)?;
-        } else {
-            st.skip_field("tool_calls")?;
-        }
-        if !self.tool_call_id.is_empty() {
-            st.serialize_field("tool_call_id", &self.tool_call_id)?;
-        } else {
-            st.skip_field("tool_call_id")?;
-        }
-        if !self.name.is_empty() {
-            st.serialize_field("name", &self.name)?;
-        } else {
-            st.skip_field("name")?;
-        }
-        if !self.tool_duration.is_empty() {
-            st.serialize_field("tool_duration", &self.tool_duration)?;
-        } else {
-            st.skip_field("tool_duration")?;
-        }
-        st.end()
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -139,23 +91,6 @@ pub struct ToolDefFunction {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_serialize_empty_assistant() {
-        let m = Message {
-            role: Role::Assistant,
-            content: String::new(),
-            reasoning_content: String::new(),
-            reasoning_details: vec![],
-            tool_calls: vec![],
-            tool_call_id: String::new(),
-            name: String::new(),
-            tool_duration: String::new(),
-        };
-        let json = serde_json::to_string(&m).unwrap();
-        let out: serde_json::Value = serde_json::from_str(&json).unwrap();
-        assert_eq!(out["content"].as_str().unwrap(), " ");
-    }
 
     #[test]
     fn test_serialize_assistant_with_content() {

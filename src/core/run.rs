@@ -1,4 +1,4 @@
-use super::{Deps, bootstrap, resolve, scheduler};
+use super::{Deps, bootstrap, resolve};
 use crate::tools::Tool;
 use std::sync::Arc;
 
@@ -72,18 +72,6 @@ pub fn run_definition(
                 Some(i) => i,
                 None => return Err(format!("interface \"{}\" not registered", name).into()),
             };
-            if !deps.config.schedule.jobs.is_empty() {
-                match iface.notifier(&deps) {
-                    Some(notifier) => scheduler::start_scheduler(&deps, notifier),
-                    None => {
-                        return Err(format!(
-                            "schedule configured but interface \"{}\" has no notifier",
-                            name
-                        )
-                        .into());
-                    }
-                }
-            }
             log::info!("{} starting", agent_name);
             iface.run(deps)?;
             return Ok(());

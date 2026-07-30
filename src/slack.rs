@@ -1,5 +1,5 @@
 use crate::core::session_manager::SessionManager;
-use crate::core::{Deps, Interface, Notifier};
+use crate::core::{Deps, Interface};
 use crate::integration::{self, ActivePrompt, StreamingBackend};
 use crate::markdown::slack::markdown_to_slack;
 use async_trait::async_trait;
@@ -607,38 +607,6 @@ impl Interface for BotAdapter {
         let rt = tokio::runtime::Runtime::new()?;
         rt.block_on(bot.run_loop());
         Ok(())
-    }
-
-    fn notifier(&self, deps: &Deps) -> Option<Arc<dyn Notifier + Send + Sync>> {
-        let bot_token = deps.config.slack.bot_token.clone();
-        if bot_token.is_empty() {
-            return None;
-        }
-        Some(Arc::new(SlackNotifier {
-            client: reqwest::Client::new(),
-            bot_token,
-        }))
-    }
-}
-
-struct SlackNotifier {
-    client: reqwest::Client,
-    bot_token: String,
-}
-
-impl Notifier for SlackNotifier {
-    fn schedule_notify(
-        &self,
-        channel: &str,
-        message: &str,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let rt = tokio::runtime::Runtime::new()?;
-        rt.block_on(async {
-            post_message(&self.client, &self.bot_token, channel, message, None)
-                .await
-                .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.into() })?;
-            Ok(())
-        })
     }
 }
 

@@ -26,6 +26,19 @@ pub struct Tool {
     >,
 }
 
+impl From<&Tool> for ToolDef {
+    fn from(t: &Tool) -> Self {
+        ToolDef {
+            def_type: "function".to_string(),
+            function: crate::message::ToolDefFunction {
+                name: t.name.clone(),
+                description: t.description.clone(),
+                parameters: t.parameters.clone(),
+            },
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct Registry {
     tools: HashMap<String, Tool>,
@@ -69,14 +82,7 @@ impl Registry {
         let mut defs = Vec::new();
         for name in &self.order {
             if let Some(t) = self.tools.get(name) {
-                defs.push(ToolDef {
-                    def_type: "function".to_string(),
-                    function: crate::message::ToolDefFunction {
-                        name: t.name.clone(),
-                        description: t.description.clone(),
-                        parameters: t.parameters.clone(),
-                    },
-                });
+                defs.push(ToolDef::from(t));
             }
         }
         defs

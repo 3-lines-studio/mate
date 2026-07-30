@@ -76,7 +76,6 @@ pub struct AgentSession {
     client: Arc<dyn ChatClient>,
     system_msg: String,
     cwd: String,
-    api_session_id: String,
 
     cached_tool_defs: Vec<ToolDef>,
 
@@ -131,7 +130,6 @@ impl AgentSession {
         let date_str = now.format("%Y-%m-%d").to_string();
         let system_msg = format!("CWD: {}\nDate: {}\n\n{}", cwd, date_str, system_prompt);
         let cached_tool_defs = registry.tool_defs();
-        let api_session_id = sess.id.clone();
 
         AgentSession {
             store,
@@ -140,7 +138,6 @@ impl AgentSession {
             client,
             system_msg,
             cwd,
-            api_session_id,
             cached_tool_defs,
             working_messages: Vec::new(),
             subagents_state: types::SubagentState {
@@ -158,14 +155,13 @@ impl AgentSession {
         sess_id: String,
         def: &SubagentDef,
         cwd: String,
-        tool_call_id: &str,
+        _tool_call_id: &str,
     ) -> Self {
         let date_str = chrono::Local::now().format("%Y-%m-%d").to_string();
         let system_msg = format!(
             "CWD: {}\nDate: {}\n\n{}\n\nYour final message is the parent's full tool result.",
             cwd, date_str, def.system_prompt,
         );
-        let api_session_id = format!("{}:sub:{}:{}", sess_id, def.id, tool_call_id);
         AgentSession {
             store,
             sess: Session {
@@ -187,7 +183,6 @@ impl AgentSession {
             client: def.client.clone(),
             system_msg,
             cwd,
-            api_session_id,
             cached_tool_defs: def.registry.tool_defs(),
             working_messages: Vec::new(),
             subagents_state: types::SubagentState {

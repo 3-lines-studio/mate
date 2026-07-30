@@ -6,7 +6,6 @@ pub(super) const SECTION_NAMES: &[&str] = &[
     "providers",
     "models",
     "subagents",
-    "schedule",
 ];
 
 const AGENT_FIELDS: &[(&str, FieldKind)] = &[
@@ -48,12 +47,6 @@ const SUBAGENT_FIELDS: &[(&str, FieldKind)] = &[
     ("tools", FieldKind::Comma),
 ];
 
-const SCHEDULE_JOB_FIELDS: &[(&str, FieldKind)] = &[
-    ("cron", FieldKind::Text),
-    ("channel", FieldKind::Text),
-    ("model", FieldKind::PickModels),
-];
-
 #[derive(Clone, Copy, PartialEq)]
 pub(super) enum FieldKind {
     Text,
@@ -68,7 +61,7 @@ pub(super) enum FieldKind {
 
 impl super::ConfigScreen {
     pub(super) fn is_array_section(&self, idx: usize) -> bool {
-        matches!(idx, 4..=7)
+        matches!(idx, 4..=6)
     }
 
     pub(super) fn array_len(&self, section_idx: usize) -> usize {
@@ -76,7 +69,6 @@ impl super::ConfigScreen {
             4 => self.config.providers.len(),
             5 => self.config.models.len(),
             6 => self.config.subagents.len(),
-            7 => self.config.schedule.jobs.len(),
             _ => 0,
         }
     }
@@ -90,7 +82,6 @@ impl super::ConfigScreen {
             4 => PROVIDER_FIELDS.len(),
             5 => MODEL_FIELDS.len(),
             6 => SUBAGENT_FIELDS.len(),
-            7 => SCHEDULE_JOB_FIELDS.len(),
             _ => 0,
         }
     }
@@ -104,7 +95,6 @@ impl super::ConfigScreen {
             4 => PROVIDER_FIELDS,
             5 => MODEL_FIELDS,
             6 => SUBAGENT_FIELDS,
-            7 => SCHEDULE_JOB_FIELDS,
             _ => &[],
         }
     }
@@ -312,36 +302,6 @@ impl super::ConfigScreen {
         Ok(())
     }
 
-    pub(super) fn get_job_field(&self, idx: usize, name: &str) -> String {
-        if let Some(j) = self.config.schedule.jobs.get(idx) {
-            match name {
-                "cron" => j.cron.clone(),
-                "channel" => j.channel.clone(),
-                "model" => j.model.clone(),
-                _ => String::new(),
-            }
-        } else {
-            String::new()
-        }
-    }
-
-    pub(super) fn set_job_field(
-        &mut self,
-        idx: usize,
-        name: &str,
-        value: &str,
-    ) -> Result<(), String> {
-        if let Some(j) = self.config.schedule.jobs.get_mut(idx) {
-            match name {
-                "cron" => j.cron = value.to_string(),
-                "channel" => j.channel = value.to_string(),
-                "model" => j.model = value.to_string(),
-                _ => {}
-            }
-        }
-        Ok(())
-    }
-
     pub(super) fn get_scalar_field_value(&self, section_idx: usize, field_name: &str) -> String {
         match section_idx {
             0 => self.get_agent_field(field_name),
@@ -377,7 +337,6 @@ impl super::ConfigScreen {
             4 => self.get_provider_field(item_idx, field_name),
             5 => self.get_model_field(item_idx, field_name),
             6 => self.get_subagent_field(item_idx, field_name),
-            7 => self.get_job_field(item_idx, field_name),
             _ => String::new(),
         }
     }
@@ -393,7 +352,6 @@ impl super::ConfigScreen {
             4 => self.set_provider_field(item_idx, field_name, value),
             5 => self.set_model_field(item_idx, field_name, value),
             6 => self.set_subagent_field(item_idx, field_name, value),
-            7 => self.set_job_field(item_idx, field_name, value),
             _ => Ok(()),
         }
     }

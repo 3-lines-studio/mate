@@ -840,7 +840,6 @@ mod tests {
             cwd: path.clone(),
             store: Store::new(&path).unwrap(),
             subagents: HashMap::new(),
-            skills: None,
             config: Config::default_for(&path),
             config_dir: String::new(),
             model_name: String::new(),

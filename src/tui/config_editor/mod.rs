@@ -87,9 +87,6 @@ impl ConfigScreen {
             6 => {
                 self.config.subagents.remove(ii);
             }
-            7 => {
-                self.config.schedule.jobs.remove(ii);
-            }
             _ => return,
         }
         self.dirty = true;

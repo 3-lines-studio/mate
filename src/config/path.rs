@@ -61,7 +61,6 @@ impl Config {
             telegram: TelegramConfig::default(),
             services: std::collections::HashMap::new(),
             tui: TUIConfig::default(),
-            schedule: ScheduleConfig::default(),
         }
     }
 }

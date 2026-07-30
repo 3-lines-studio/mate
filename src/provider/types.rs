@@ -44,8 +44,6 @@ pub struct ChatRequest {
     pub reasoning: Option<ReasoningConfig>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cache_control: Option<CacheControl>,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub session_id: String,
 }
 
 #[derive(Debug, Clone)]

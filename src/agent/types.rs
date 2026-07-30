@@ -124,8 +124,6 @@ pub(super) struct PendingTool {
     pub call: StreamToolCall,
     pub result: String,
     pub duration: String,
-    #[allow(dead_code)]
-    pub had_error: bool,
 }
 
 pub(super) struct RoundResult {

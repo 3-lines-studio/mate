@@ -252,14 +252,6 @@ impl super::ConfigScreen {
                     prompt: String::new(),
                 });
             }
-            7 => {
-                self.config.schedule.jobs.push(crate::config::ScheduledJob {
-                    cron: String::new(),
-                    prompt: String::new(),
-                    channel: String::new(),
-                    model: String::new(),
-                });
-            }
             _ => {}
         }
         self.dirty = true;
@@ -354,7 +346,6 @@ impl super::ConfigScreen {
                         4 => self.config.providers[*ii].id.clone(),
                         5 => self.config.models[*ii].id.clone(),
                         6 => self.config.subagents[*ii].id.clone(),
-                        7 => self.config.schedule.jobs[*ii].cron.clone(),
                         _ => String::new(),
                     };
                     items.push(RenderLine {

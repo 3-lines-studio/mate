@@ -100,22 +100,6 @@ pub struct TelegramConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct ScheduledJob {
-    pub cron: String,
-    pub prompt: String,
-    #[serde(default)]
-    pub channel: String,
-    #[serde(default)]
-    pub model: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct ScheduleConfig {
-    #[serde(default)]
-    pub jobs: Vec<ScheduledJob>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct TUIConfig {
     #[serde(default)]
     pub tools_expanded: bool,
@@ -145,12 +129,10 @@ pub struct Config {
     pub slack: SlackConfig,
     #[serde(default)]
     pub telegram: TelegramConfig,
-    #[serde(default)]
+    #[serde(default, skip_serializing)]
     pub services: HashMap<String, HashMap<String, serde_json::Value>>,
     #[serde(default)]
     pub tui: TUIConfig,
-    #[serde(default)]
-    pub schedule: ScheduleConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

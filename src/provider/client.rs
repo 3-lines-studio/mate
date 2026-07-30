@@ -2,6 +2,7 @@ use super::types::{
     CacheControl, ChatRequest, ModelProfile, ProviderError, ReasoningConfig, StreamEvent,
     StreamOptions, Usage,
 };
+use crate::message::Role;
 use tokio::sync::mpsc;
 
 #[derive(Clone)]
@@ -79,6 +80,10 @@ impl ChatClient for Client {
 
         for msg in &mut req.messages {
             msg.tool_duration = String::new();
+            if msg.role == Role::Assistant && msg.content.is_empty() && msg.tool_calls.is_empty() {
+                // Some providers reject an empty content field on assistant messages.
+                msg.content = " ".to_string();
+            }
         }
 
         let body = serde_json::to_vec(&req).map_err(|e| ProviderError {

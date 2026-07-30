@@ -23,8 +23,7 @@ pub fn save_config(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let mut data = load_config_map(dir)?;
     let edited = toml::Value::try_from(config)?;
-    if let toml::Value::Table(mut t) = edited {
-        t.remove("services");
+    if let toml::Value::Table(t) = edited {
         for (key, val) in t {
             data.insert(key, val);
         }

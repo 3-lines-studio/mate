@@ -149,17 +149,12 @@ fn parse_skill_file(raw: &str, source: &str) -> Skill {
     };
 
     let mut rest = raw;
-    if rest.starts_with("---\n") {
-        rest = &rest[4..];
-        if let Some(idx) = rest.find("\n---\n") {
-            let frontmatter = &rest[..idx];
-            rest = &rest[idx + 5..];
-
-            let fm: Frontmatter = yaml_serde::from_str(frontmatter).unwrap_or_default();
-            skill.name = fm.name;
-            skill.description = fm.description;
-            skill.tools = fm.tools;
-        }
+    if let Some((frontmatter, body)) = crate::util::split_frontmatter(raw) {
+        let fm: Frontmatter = yaml_serde::from_str(frontmatter).unwrap_or_default();
+        skill.name = fm.name;
+        skill.description = fm.description;
+        skill.tools = fm.tools;
+        rest = body;
     }
 
     if skill.name.is_empty() {

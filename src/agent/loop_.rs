@@ -163,7 +163,6 @@ impl super::AgentSession {
         ChatRequest {
             messages: msgs,
             tools: self.cached_tool_defs.clone(),
-            session_id: self.api_session_id.clone(),
             ..Default::default()
         }
     }

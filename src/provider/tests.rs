@@ -71,11 +71,8 @@ fn test_client_pricing() {
 }
 
 #[test]
-fn test_apply_profile_keeps_session_id_and_sets_cache() {
-    let mut req = ChatRequest {
-        session_id: "sess-keep".to_string(),
-        ..Default::default()
-    };
+fn test_apply_profile_sets_cache() {
+    let mut req = ChatRequest::default();
     apply_profile(
         &mut req,
         &ModelProfile {
@@ -86,7 +83,6 @@ fn test_apply_profile_keeps_session_id_and_sets_cache() {
             ..Default::default()
         },
     );
-    assert_eq!(req.session_id, "sess-keep");
     assert_eq!(req.reasoning_effort, "high");
     let cc = req.cache_control.expect("cache_control");
     assert_eq!(cc.cc_type, "ephemeral");
@@ -94,11 +90,8 @@ fn test_apply_profile_keeps_session_id_and_sets_cache() {
 }
 
 #[test]
-fn test_apply_profile_openrouter_reasoning_keeps_session_id() {
-    let mut req = ChatRequest {
-        session_id: "or-sess".to_string(),
-        ..Default::default()
-    };
+fn test_apply_profile_openrouter_reasoning() {
+    let mut req = ChatRequest::default();
     apply_profile(
         &mut req,
         &ModelProfile {
@@ -108,7 +101,6 @@ fn test_apply_profile_openrouter_reasoning_keeps_session_id() {
             ..Default::default()
         },
     );
-    assert_eq!(req.session_id, "or-sess");
     assert!(req.cache_control.is_none());
     assert!(req.reasoning_effort.is_empty());
     assert_eq!(req.reasoning.as_ref().unwrap().effort, "medium");
@@ -173,7 +165,6 @@ async fn test_chat_request_json_shape() {
         reasoning_effort: String::new(),
         reasoning: None,
         cache_control: None,
-        session_id: String::new(),
     };
 
     let rx = c.chat(req).await.unwrap();
@@ -212,7 +203,6 @@ async fn test_chat_sets_stream_options() {
         reasoning_effort: String::new(),
         reasoning: None,
         cache_control: None,
-        session_id: String::new(),
     };
 
     let rx = c.chat(req).await.unwrap();
@@ -250,7 +240,6 @@ async fn test_chat_non_200_error() {
         reasoning_effort: String::new(),
         reasoning: None,
         cache_control: None,
-        session_id: String::new(),
     };
 
     let result = c.chat(req).await;
@@ -291,7 +280,6 @@ async fn test_chat_openrouter_reasoning_config() {
         reasoning_effort: String::new(),
         reasoning: None,
         cache_control: None,
-        session_id: String::new(),
     };
 
     let rx = c.chat(req).await.unwrap();
@@ -331,7 +319,6 @@ async fn test_chat_non_openrouter_thinking_config() {
         reasoning_effort: String::new(),
         reasoning: None,
         cache_control: None,
-        session_id: "session-123".to_string(),
     };
 
     let rx = c.chat(req).await.unwrap();
@@ -372,7 +359,6 @@ async fn test_sse_text_delta() {
         reasoning_effort: String::new(),
         reasoning: None,
         cache_control: None,
-        session_id: String::new(),
     };
 
     let mut rx = c.chat(req).await.unwrap();
@@ -419,7 +405,6 @@ async fn test_sse_reasoning_content_delta() {
         reasoning_effort: String::new(),
         reasoning: None,
         cache_control: None,
-        session_id: String::new(),
     };
 
     let mut rx = c.chat(req).await.unwrap();
@@ -467,7 +452,6 @@ async fn test_sse_reasoning_delta_fallback() {
         reasoning_effort: String::new(),
         reasoning: None,
         cache_control: None,
-        session_id: String::new(),
     };
 
     let mut rx = c.chat(req).await.unwrap();
@@ -516,7 +500,6 @@ async fn test_sse_reasoning_details_prefer_over_fallback() {
         reasoning_effort: String::new(),
         reasoning: None,
         cache_control: None,
-        session_id: String::new(),
     };
 
     let mut rx = c.chat(req).await.unwrap();
@@ -566,7 +549,6 @@ async fn test_sse_tool_call_accumulation() {
         reasoning_effort: String::new(),
         reasoning: None,
         cache_control: None,
-        session_id: String::new(),
     };
 
     let mut rx = c.chat(req).await.unwrap();
@@ -617,7 +599,6 @@ async fn test_sse_tool_call_emitted_after_done_terminator() {
         reasoning_effort: String::new(),
         reasoning: None,
         cache_control: None,
-        session_id: String::new(),
     };
 
     let mut rx = c.chat(req).await.unwrap();
@@ -672,7 +653,6 @@ async fn test_sse_finish_reason() {
         reasoning_effort: String::new(),
         reasoning: None,
         cache_control: None,
-        session_id: String::new(),
     };
 
     let mut rx = c.chat(req).await.unwrap();
@@ -721,7 +701,6 @@ async fn test_sse_usage() {
         reasoning_effort: String::new(),
         reasoning: None,
         cache_control: None,
-        session_id: String::new(),
     };
 
     let mut rx = c.chat(req).await.unwrap();
@@ -770,7 +749,6 @@ async fn test_sse_usage_cached_tokens_fallback() {
         reasoning_effort: String::new(),
         reasoning: None,
         cache_control: None,
-        session_id: String::new(),
     };
 
     let mut rx = c.chat(req).await.unwrap();
@@ -821,7 +799,6 @@ async fn test_sse_usage_explicit_field_wins() {
         reasoning_effort: String::new(),
         reasoning: None,
         cache_control: None,
-        session_id: String::new(),
     };
 
     let mut rx = c.chat(req).await.unwrap();
@@ -870,7 +847,6 @@ async fn test_sse_usage_no_cache_field() {
         reasoning_effort: String::new(),
         reasoning: None,
         cache_control: None,
-        session_id: String::new(),
     };
 
     let mut rx = c.chat(req).await.unwrap();
@@ -919,7 +895,6 @@ async fn test_sse_reasoning_details_text_merge() {
         reasoning_effort: String::new(),
         reasoning: None,
         cache_control: None,
-        session_id: String::new(),
     };
 
     let mut rx = c.chat(req).await.unwrap();
@@ -975,7 +950,6 @@ async fn test_sse_reasoning_details_encrypted() {
         reasoning_effort: String::new(),
         reasoning: None,
         cache_control: None,
-        session_id: String::new(),
     };
 
     let mut rx = c.chat(req).await.unwrap();
@@ -1028,7 +1002,6 @@ async fn test_sse_reasoning_details_no_index_auto_assigns() {
         reasoning_effort: String::new(),
         reasoning: None,
         cache_control: None,
-        session_id: String::new(),
     };
 
     let mut rx = c.chat(req).await.unwrap();
@@ -1075,7 +1048,6 @@ async fn test_sse_done_sentinel() {
         reasoning_effort: String::new(),
         reasoning: None,
         cache_control: None,
-        session_id: String::new(),
     };
 
     let mut rx = c.chat(req).await.unwrap();
@@ -1116,7 +1088,6 @@ async fn test_sse_error_in_chunk() {
         reasoning_effort: String::new(),
         reasoning: None,
         cache_control: None,
-        session_id: String::new(),
     };
 
     let mut rx = c.chat(req).await.unwrap();
@@ -1170,7 +1141,6 @@ async fn test_sse_tool_call_trailing_buffer_without_newline() {
         reasoning_effort: String::new(),
         reasoning: None,
         cache_control: None,
-        session_id: String::new(),
     };
 
     let mut rx = c.chat(req).await.unwrap();
